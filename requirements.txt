@@ -1,0 +1,32 @@
+# basic
+numpy==1.24.4
+pandas==2.0.3
+scipy==1.10.1
+xtquant~=240613.1.1
+
+# 从Yahoo finance下载财务数据
+yfinance==0.2.41
+
+# RL库
+gym==0.26.2
+stable-baselines3==2.3.2
+
+# 数据可视化
+matplotlib==3.3.4
+seaborn==0.11.1
+
+
+# 深度学习库
+#tensorflow==2.6.0
+
+
+# 异步编程
+#asyncio==3.4.3
+
+# 用于处理PDF和Word文档的库
+#PyPDF2==1.26.0
+#python-docx==0.8.10
+
+# Web爬虫
+#beautifulsoup4==4.9.3
+#selenium==3.141.0
