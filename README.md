@@ -42,6 +42,7 @@ To install Hermes, follow these steps:
   pip install -r requirements.txt
   ```
 
+
 ##Usage
   1.Configure your trading parameters in the config.yaml file.
   
