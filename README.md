@@ -11,24 +11,26 @@
 
 ## Installation
 when you are in window:
-```buildoutcfg
-git config --global core.autocrlf true
-```
+    ```
+    git config --global core.autocrlf true
+    ```
 
 when you are in linux:
-```
-git config --global core.autocrlf input
-```
-or you could be disable:
-```
-git config --global core.autocrlf false
-```
+    ```
+    git config --global core.autocrlf input
+    ```
 
-  To install Hermes, follow these steps:
-1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/hermes.git
-   ```
+or you could be disable:
+    ```
+    git config --global core.autocrlf false
+    ```
+
+To install Hermes, follow these steps:
+
+1.Clone the repository:
+    ```
+   git clone https://github.com/52Pig/hermes.git
+    ```
 
 2.Navigate to the project directory:
   ```
