@@ -19,25 +19,28 @@ when you are in linux:
 ```
 git config --global core.autocrlf input
 ```
-
-
+or you could be disable:
+```
+git config --global core.autocrlf false
+```
 
   To install Hermes, follow these steps:
 1. Clone the repository:
    ```
-   git config --global core.autocrlf true
    git clone https://github.com/yourusername/hermes.git
    ```
 
-  2.Navigate to the project directory:
+2.Navigate to the project directory:
   ```
   cd hermes
   ```
- 3.Install the required dependencies:
+
+3.Install the required dependencies:
   ```
   pip install -r requirements.txt
   ```
-  ##Usage
+
+##Usage
   1.Configure your trading parameters in the config.yaml file.
   
   2.Run the main script to start trading:
