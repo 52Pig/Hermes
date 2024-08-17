@@ -10,10 +10,22 @@
 - **Customizable Strategies:** Tailor strategies to meet specific trading goals and risk tolerance levels, with support for backtesting and optimization.
 
 ## Installation
+when you are in window:
+```buildoutcfg
+git config --global core.autocrlf true
+```
+
+when you are in linux:
+```
+git config --global core.autocrlf input
+```
+
+
 
   To install Hermes, follow these steps:
 1. Clone the repository:
    ```
+   git config --global core.autocrlf true
    git clone https://github.com/yourusername/hermes.git
    ```
 
