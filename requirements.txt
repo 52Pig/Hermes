@@ -30,3 +30,9 @@ seaborn==0.11.1
 # Web爬虫
 #beautifulsoup4==4.9.3
 #selenium==3.141.0
+
+## 遗传算法
+deap==1.4.1
+
+## 交互式图标
+plotly==5.23.0

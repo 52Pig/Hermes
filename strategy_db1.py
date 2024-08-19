@@ -123,13 +123,15 @@ def get_current_price(stock_code):
 
 def get_opening_price(stock_code, trade_date):
     """获取股票开盘价的函数"""
-    data = xtdata.get_market_data(
-        stock_code,
+    data = xtdata.get_market_data_ex(
         field_list=['open'],
-        period='d',
-        start_date=trade_date,
+        stock_list=[stock_code],
+        period='1d',
+        start_time=trade_date,
         count=1
     )
+
+    print(data)
     return data.iloc[0]['open'] if not data.empty else None
 
 
