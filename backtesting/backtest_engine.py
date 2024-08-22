@@ -1,12 +1,19 @@
-import concurrent.futures
+import os
+import sys
 import logging
 import pandas as pd
+import concurrent.futures
+from datetime import datetime
 import numpy as np
 from backtesting.performance_metrics import calculate_max_drawdown, calculate_volatility, calculate_calmar_ratio, \
     calculate_sortino_ratio
 
+if not os.path.exists("log"):
+    os.makedirs('log')
+
 # 设置日志
-logging.basicConfig(filename='backtest.log', level=logging.INFO, format='%(asctime)s %(message)s')
+current_date = datetime.now().strftime('%Y-%m-%d')
+logging.basicConfig(filename=f'log/backtest_{current_date}.log', level=logging.INFO, format='%(asctime)s %(message)s')
 
 
 class BacktestEngine:
