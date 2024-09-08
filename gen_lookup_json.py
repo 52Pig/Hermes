@@ -121,7 +121,6 @@ def gen_lookup_json():
       生成lookup数据
     :return:
     '''
-
     index_code = '沪深A股'
     index_stocks = xtdata.get_stock_list_in_sector(index_code)
     # print("[DEBUG]hs=", len(index_stocks), index_stocks)
