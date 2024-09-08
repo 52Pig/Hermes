@@ -1,7 +1,9 @@
 #coding=utf8
 import sys
+import json
 import numpy as np
 import tensorflow as tf
+from xtquant import xtdata
 from datetime import datetime
 
 def to_onehot(value, num_classes):
@@ -31,6 +33,14 @@ def gen_lookup_data(filename, out_file):
     :param out_file:
     :return:
     '''
+
+    # 加载lookup数据
+    stc_index_file = 'dataset/lookup_stock_code.json'
+    stc_dict = dict()
+    with open(stc_index_file) as ff:
+        stc_dict = json.load(ff)
+    # print(stc_dict)
+    # quit()
     fw_file = open(out_file, 'w')
     for i, line in enumerate(open(filename)):
         line = line.rstrip('\r\n')
@@ -64,8 +74,7 @@ def gen_lookup_data(filename, out_file):
         minute_of_hour_list = [str(ele) for ele in minute_of_hour_oh]
         minute_of_hour_str = ','.join(minute_of_hour_list)
         # stock_code 转成hash
-        hash_layer = tf.keras.layers.Hashing(num_bins=10000, salt=9999)
-        stock_code_hash = str(hash_layer([stock_code]).numpy()[0])
+        stock_code_hash = stc_dict.get(stock_code, '0')
         # print(stock_code_hash, stock_code)
 
         # 输出数据
@@ -113,21 +122,17 @@ def gen_lookup_json():
     :return:
     '''
 
-    ## 时间转换
-    # 一年中第几天,第几天不是交易日会有影响？
-    ind = 0
-    year_json = open('dataset/lookup_year.json', 'w')
-    year_dict = dict()
-    for i in range(365):
-        ind += 1
-
-    # 一月中第几天
-    # 一个星期中第几天
-    # 一天中第几个小时
-    # 一小时中第几个分钟
-
-
-    # 股票代码转成索引
+    index_code = '沪深A股'
+    index_stocks = xtdata.get_stock_list_in_sector(index_code)
+    # print("[DEBUG]hs=", len(index_stocks), index_stocks)
+    hash_layer = tf.keras.layers.Hashing(num_bins=10000, salt=9999)
+    stc_json = open('dataset/lookup_stock_code.json', 'w')
+    stc_dict = dict()
+    for stock in index_stocks:
+        sc_hash = str(hash_layer([stock]).numpy()[0])
+        stc_dict[stock] = sc_hash
+    stc_str = json.dumps(stc_dict, indent=4)
+    stc_json.write(stc_str+'\n')
 
 
 if __name__ == '__main__':
