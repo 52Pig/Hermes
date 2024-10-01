@@ -1,6 +1,27 @@
+import os, sys
 import pandas as pd
 import numpy as np
 import datetime
+import configparser
+
+# 设置项目根路径
+file_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.join(file_dir, '../../')
+# config_dir = os.path.join(root_dir, 'conf/config.ini')
+sys.path.append(root_dir)
+# print(file_dir)
+# print(root_dir)
+# print(os.listdir(root_dir))
+config = configparser.ConfigParser()
+conf_file = os.path.join(root_dir, 'conf/config.ini')
+config.read(conf_file)
+# config.read(['conf/config.ini'])
+path = config.get("client", 'mini_path')
+acc_name = config.get("client", "acc_name")
+# sys.path.append(os.path.join(root_dir))
+proj_dir = config.get("project", "proj_dir")
+print('project_dir=', proj_dir)
+
 
 # 设置随机种子以确保结果可重复
 np.random.seed(42)
@@ -35,6 +56,7 @@ data['Date'] = pd.to_datetime(data['Date'])
 data.sort_values(by='Date', inplace=True)
 
 # 保存到 CSV 文件
-data.to_csv('historical_data.csv', index=False)
+historical_data = os.path.join(proj_dir, 'dataset/historical_data.csv')
+data.to_csv(historical_data, index=False)
 
 print("historical_data.csv 文件已生成")

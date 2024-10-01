@@ -1,10 +1,23 @@
 import os
 import sys
 import pandas as pd
-
+import configparser
 # 设置项目根路径
-root_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.join(root_dir))
+# root_dir = os.path.dirname(os.path.abspath(__file__))
+# sys.path.append(os.path.join(root_dir))
+# 设置项目根路径
+file_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.join(file_dir, '../../')
+sys.path.append(root_dir)
+config = configparser.ConfigParser()
+conf_file = os.path.join(root_dir, 'conf/config.ini')
+config.read(conf_file)
+path = config.get("client", 'mini_path')
+acc_name = config.get("client", "acc_name")
+proj_dir = config.get("project", "proj_dir")
+print('project_dir=', proj_dir)
+
+
 
 from backtesting.backtest_engine import BacktestEngine
 from backtesting.strategy import SimpleMovingAverageStrategy
@@ -13,7 +26,7 @@ from backtesting.genetic_optimize import optimize_strategy_parameters
 
 def backtest_example():
     # 读取历史数据
-    data = pd.read_csv("dataset/historical_data.csv")
+    data = pd.read_csv("../../dataset/historical_data.csv")
     data['short_mavg'] = data['Close'].rolling(window=40, min_periods=1).mean()
     data['long_mavg'] = data['Close'].rolling(window=100, min_periods=1).mean()
 
