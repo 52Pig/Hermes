@@ -13,7 +13,7 @@ from backtesting.genetic_optimize import optimize_strategy_parameters
 
 def backtest_example():
     # 读取历史数据
-    data = pd.read_csv("historical_data.csv")
+    data = pd.read_csv("dataset/historical_data.csv")
     data['short_mavg'] = data['Close'].rolling(window=40, min_periods=1).mean()
     data['long_mavg'] = data['Close'].rolling(window=100, min_periods=1).mean()
 
