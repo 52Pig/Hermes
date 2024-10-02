@@ -1,17 +1,25 @@
-
 import os
 import gym
 import numpy as np
 import pandas as pd
-import yfinance as yf
 import matplotlib.pyplot as plt
 
 from sklearn.preprocessing import MinMaxScaler
 from stable_baselines3 import PPO
-from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import BaseCallback
-from stable_baselines3.common.results_plotter import load_results, ts2xy
+
+import random
+import configparser
+from xtquant.xttrader import XtQuantTrader
+from xtquant.xttype import StockAccount
+
+
+
+
+
+
+
 
 # Define the trading environment
 class TradingEnvironment(gym.Env):
@@ -27,11 +35,32 @@ class TradingEnvironment(gym.Env):
         # [INIT]action_space = Discrete(3)
         # [INIT]observation_space = Box(0.0, 1.0, (6,), float32)
 
+        ## qmt init
+        config = configparser.ConfigParser()
+        config.read('conf/config.ini')
+        # config.read(['conf/config.ini'])
+        path = config.get("client", 'mini_path')
+        acc_name=***
+        # print('[mini_path]', path)
+        session_id = int(random.randint(100000, 999999))
+        self.xt_trader = XtQuantTrader(path, session_id)
+        # 链接qmt客户端
+        self.xt_trader.start()
+        connect_status = self.xt_trader.connect()
+        # 订阅账户
+        self.acc = StockAccount(acc_name)
+        subsribe_result = self.xt_trader.subscribe(self.acc)
+        print('[DEBUG]connect_status=', connect_status, ',subscribe_status=', subsribe_result)
+
+
     def reset(self):
         # 当前时间步
         self.current_step = 0
         # 账户初始资金
-        self.account_balance = 100000  # Initial account balance
+        #self.account_balance = 100000  # Initial account balance
+        acc_info = self.xt_trader.query_stock_asset(self.acc)
+        self.account_balance = acc_info.total_asset
+
         # 当前持有的股票数量
         self.shares_held = 0
         # 当前净资产，初始为账户余额，随着买入卖出，更新为账户余额+持有的股票价值
@@ -77,7 +106,7 @@ class TradingEnvironment(gym.Env):
 
     def log_step_reward(self, time_step, reward):
         # 将时间步和奖励值写入日志文件
-        with open('log/train_step_reward.txt', "a") as f:
+        with open('examples/ppo/log/train_step_reward.txt', "a") as f:
             f.write(f"{time_step},{reward}\n")
 
     def _take_action(self, action):
@@ -188,16 +217,6 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
 
 
 if __name__ == "__main__":
-    # 定义股票代码
-    ticker = "AAPL"
-    # 下载历史价格数据
-    # data = yf.download(ticker, start="2018-01-01", end="2024-08-15", proxy="http://89.177.16.134:9098")
-
-    # data = yf.download(ticker, start="2024-01-01", end="2024-08-15")
-    data = yf.download(ticker, start="2024-08-01", end="2024-08-15")
-
-    print(type(data), data.head())
-    quit()
     #
     # 交易日   开盘价    最高价     最低价   收盘价   调整后收盘价      成交量
     # Date    Open       High        Low      Close  Adj Close     Volume
@@ -207,10 +226,78 @@ if __name__ == "__main__":
     # 2018-01-05  43.360001  43.842499  43.262501  43.750000  41.214230   94640000
     # 2018-01-08  43.587502  43.902500  43.482498  43.587502  41.061150   82271200
 
-    # remove missing value from data
-    data = data.dropna()
-    # 去除第一列中有0的行
-    data = data[data['Open'] != 0]
+    # os.chdir('D:/tool/pycharm_client/workspace/Hermes')
+
+    fname = './dataset/000560.SZ'
+    data = pd.read_csv(fname, sep="\t")
+    column_names = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+    data = data.rename(columns={data.columns[0]: 'Date'})
+    data = data.rename(columns={data.columns[1]: 'Open'})
+    data = data.rename(columns={data.columns[2]: 'High'})
+    data = data.rename(columns={data.columns[3]: 'Low'})
+    data = data.rename(columns={data.columns[4]: 'Close'})
+    data = data.rename(columns={data.columns[5]: 'Volume'})
+    data = data.rename(columns={data.columns[6]: 'StockHash'})
+
+    data = data.rename(columns={data.columns[7]: 'year_day'})
+    data = data.rename(columns={data.columns[8]: 'year_month'})
+    data = data.rename(columns={data.columns[9]: 'month_day'})
+    data = data.rename(columns={data.columns[10]: 'week_day'})
+    data = data.rename(columns={data.columns[11]: 'hour_of_day'})
+    data = data.rename(columns={data.columns[12]: 'minute_of_hour'})
+
+    # 删除第7列（索引6）
+    data = data.drop(data.columns[6], axis=1)
+    print(data.columns)
+
+    # 合并列，并使用逗号分隔
+    data['combined'] = data[
+        ['year_day', 'year_month', 'month_day', 'week_day', 'hour_of_day', 'minute_of_hour']].astype(str).agg(','.join,
+                                                                                                              axis=1)
+
+
+    # 定义转换函数
+    def convert_to_floats(combined_str):
+        try:
+            # 分割字符串并转换为浮点数
+            return [float(value) for value in combined_str.split(',')]
+        except ValueError:
+            # 如果转换失败，返回 NaN 或其他处理方式
+            return [float('0.0')] * 506  # 根据列数返回 NaN 列表
+
+
+    # 应用转换函数
+    floats_data = data['combined'].apply(convert_to_floats)
+
+    # 调试信息：打印前几行
+    print(floats_data.head())
+
+    # 检查列表长度
+    list_lengths = floats_data.apply(len)
+    print("List lengths:", list_lengths.unique())
+
+    # 确保所有列表长度相同，并创建 DataFrame
+    if list_lengths.nunique() == 1:
+        floats_df = pd.DataFrame(floats_data.tolist())#,
+                                 #columns=['year_day', 'year_month', 'month_day', 'week_day', 'hour_of_day',
+                                 #         'minute_of_hour'])
+        data = pd.concat([data, floats_df], axis=1)
+    else:
+        print("Error: Not all lists have the same length.")
+
+    # 删除原始的合并列
+    data = data.drop(columns=['combined'])
+
+    # 转换日期列为时间戳
+    if 'Date' in data.columns:
+        data['Date'] = pd.to_datetime(data['Date'])
+        data['Date'] = data['Date'].astype(np.int64) / 10 ** 9  # 转换为时间戳（秒）
+
+    # 确保列名是字符串
+    data.columns = data.columns.astype(str)
+    # 确保所有数据列都是数值型
+    data = data.apply(pd.to_numeric, errors='coerce')
+    data = data.fillna(0)  # 或者使用其他合适的填充值
 
     # Normalize the data
     scaler = MinMaxScaler(feature_range=(0.01, 1))
@@ -232,10 +319,10 @@ if __name__ == "__main__":
     # model = PPO("MlpPolicy", env, verbose=1)
     model = PPO("MlpPolicy", env, verbose=2)
 
-    save_model_dir = r'./log/model_dir/'
+    save_model_dir = r'examples/ppo/log/model_dir/'
     callback1 = SaveOnBestTrainingRewardCallback(1000, save_model_dir)
 
-    model.learn(total_timesteps=5000, callback=callback1)
+    model.learn(total_timesteps=80000, callback=callback1)
 
 
     # Train the model

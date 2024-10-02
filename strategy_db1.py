@@ -17,15 +17,10 @@
 出逃：
 1，一天最多允许买入一支，行情结束再买下一支？
 '''
-
 import time
 import datetime
 import a_trade_calendar
 from xtquant import xtdata
-
-# 初始化xtdata模块
-# xtdata.initialize()
-
 
 def get_index_stocks(index_code):
     """获取沪深300指数的成分股列表"""
@@ -160,9 +155,11 @@ if __name__ == "__main__":
     # xtdata.get_stock_list_in_sector(index_code)
 
     # 获取昨日日期
-    yesterday = get_yesterday_date()
+    # yesterday = get_yesterday_date()
+    yesterday = '20240927'
     # 获取当日日期
-    trade_date = get_today_date()
+    # trade_date = get_today_date()
+    trade_date = '20240930'
     print('[DEBUG]yesterday=', yesterday)
     print('[DEBUG]trade_date=', trade_date)
     # 获取沪深300指数的成分股列表

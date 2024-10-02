@@ -2,7 +2,7 @@
 numpy==1.24.4
 pandas==2.0.3
 scipy==1.10.1
-xtquant~=240613.1.1
+#xtquant~=240613.1.1
 
 # 从Yahoo finance下载财务数据
 yfinance==0.2.41
@@ -17,9 +17,9 @@ seaborn==0.11.1
 
 
 # 深度学习库
-#tensorflow==2.6.0
-
-
+tensorflow==2.6.0
+torch
+protobuf==3.20.*
 # 异步编程
 #asyncio==3.4.3
 
@@ -31,8 +31,8 @@ seaborn==0.11.1
 #beautifulsoup4==4.9.3
 #selenium==3.141.0
 
-## 遗传算法
+## backtest 遗传算法
 deap==1.4.1
 
-## 交互式图标
+## backtest 交互式图标
 plotly==5.23.0

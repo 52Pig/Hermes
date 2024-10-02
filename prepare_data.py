@@ -131,7 +131,7 @@ if __name__ == '__main__':
     # pre_data.do(input_path, output_path, '20240506')
     # quit()
     res_lst = []
-    with concurrent.futures.ProcessPoolExecutor(max_workers=10) as pool:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=3) as pool:
         res_dict = {pool.submit(pre_data.do, d[0], d[1], d[2]): d for d in dates}
         for future in concurrent.futures.as_completed(res_dict):
             # param = recall_res_dict[future]
