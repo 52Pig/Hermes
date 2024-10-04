@@ -49,7 +49,7 @@ def get_latest_price(stock_code):
     """
     data = xtdata.get_market_data_ex(
         stock_list=[stock_code],
-        field_list=['time', 'open'],
+        field_list=['time', 'close'],
         period='1m',
         count=1
     )
@@ -60,8 +60,8 @@ def get_latest_price(stock_code):
     # 获取最大时间戳的行
     tdata = df.loc[df['time'].idxmax()]
     # print(tdata)
-    if 'open' in tdata:
-        return tdata['open']
+    if 'close' in tdata:
+        return tdata['close']
     else:
         return None
 
