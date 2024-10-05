@@ -159,7 +159,7 @@ class PPO_V1(BaseStrategy):
         req_dict = accounts.get("acc_1", {})
         xt_trader = req_dict.get("xt_trader")
         acc = req_dict.get("account")
-        # acc_name=***
+        # acc_name = req_dict.get("acc_name")
 
         # 下载每支股票数据
         field_list = ['time', 'open', 'high', 'low', 'close', 'volume']
