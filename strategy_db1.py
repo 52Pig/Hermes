@@ -172,7 +172,7 @@ if __name__ == "__main__":
     ztgp_stocks = get_ztgp_stocks(index_stocks, yesterday)
     # print('[DEBUG]pools=', ztgp_stocks)
     # 写出日志
-    fw_file = open('log/pools_' + trade_date + ".txt", 'w')
+    fw_file = open('logs/pools_' + trade_date + ".txt", 'w')
     for stock in ztgp_stocks:
         row_line = f"股票代码: {stock[0]}, 昨日收盘价: {stock[1]}, 昨日开盘价：{stock[2]}, 名称: {stock[3]}, 昨日收益:{stock[4]}"
         print(row_line)

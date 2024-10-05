@@ -25,12 +25,12 @@ from xtquant.xttype import StockAccount
 from xtquant import xtdata
 from xtquant import xtconstant
 
-if not os.path.exists("log"):
-    os.makedirs('log')
+if not os.path.exists("logs"):
+    os.makedirs('logs')
 
 # 设置日志
 current_date = datetime.now().strftime('%Y-%m-%d')
-logging.basicConfig(filename=f'log/ppo_v1_infer_{current_date}.log', level=logging.INFO, format='%(asctime)s %(message)s')
+logging.basicConfig(filename=f'logs/ppo_v1_infer_{current_date}.log', level=logging.INFO, format='%(asctime)s %(message)s')
 
 
 def infer_trading_strategy(model, data):
