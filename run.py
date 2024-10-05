@@ -2,6 +2,8 @@ import asyncio
 import configparser
 import importlib.util
 import os
+import time
+import traceback
 from utils.logger import setup_logging
 # 设置日志记录
 logger = setup_logging()
@@ -31,13 +33,34 @@ class StrategyManagementService:
         return config
 
     async def run(self):
+        '''
+          多个策略同时运行，并行处理任务，执行耗时较长且互不依赖的任务。
+          不会等待 execute_strategy() 完成，而是立即进入下一个循环。这允许多个 do() 调用同时进行
+        :return:
+        '''
         while True:
             try:
-                # 调用策略的交易逻辑
-                self.strategy_instance.trade_logic()
+                # 并发调用，执行时间不包含此处策略执行时间
+                asyncio.create_task(self.execute_strategy())
             except Exception as e:
                 print(f"Strategy {self.name} encountered an error: {e}")
+                # 获取当前文件名和行号
+                tb = traceback.format_exc()
+                logger.error(f"Strategy {self.__class__.__name__} encountered an error:\n{tb}")
             await asyncio.sleep(self.interval)
+
+    async def execute_strategy(self):
+        # 调用策略的交易逻辑并记录执行时间
+        start_time = time.time()
+        try:
+            self.strategy_instance.do()  # 这里可能是一个同步方法，如果是异步请使用 await
+        except Exception as e:
+            print(f"Error executing strategy {self.name}: {e}")
+            tb = traceback.format_exc()
+            logger.error(f"Strategy {self.__class__.__name__} encountered an error:\n{tb}")
+        end_time = time.time()
+        elapsed_time = round((end_time - start_time) * 1000, 5)
+        logger.info(f"Strategy {self.name} execution time: {elapsed_time} ms")
 
 
 class MicroserviceManager:
@@ -72,7 +95,7 @@ class MicroserviceManager:
         while True:
             for name, task in list(self.running_services.items()):
                 if task.done():
-                    print(f"Restarting strategy {name}...")
+                    logger.info(f"Restarting strategy {name}...")
                     config = await self.load_config()
                     strategy_config = config[name.strip()]
                     service = StrategyManagementService(name, strategy_config['path'], strategy_config['config_file'], int(strategy_config['interval']))
