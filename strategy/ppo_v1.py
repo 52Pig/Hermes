@@ -1,7 +1,6 @@
 import os, sys
 
 from base_strategy import BaseStrategy
-
 # 设置项目根路径
 root_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(root_dir))
@@ -283,9 +282,9 @@ class PPO_V1(BaseStrategy):
             # print(action)
             current_price = 0
             order_id = -1
-
+            action_name = ""
             if 0 == action:
-                # print("buy")
+                action_name = "buy"
                 # 查询账户余额
                 acc_info = self.xt_trader.query_stock_asset(self.acc)
                 cash = acc_info.cash
@@ -302,7 +301,7 @@ class PPO_V1(BaseStrategy):
                     # print('[DEBUG]buy=', current_price, order_id)
 
             elif 1 == action:
-                print("sell")
+                action_name = "sell"
                 # 查询持仓市值
                 acc_info = self.xt_trader.query_stock_asset(self.acc)
                 marketValue = acc_info.m_dMarketValue
@@ -315,7 +314,7 @@ class PPO_V1(BaseStrategy):
                                                          xtconstant.FIX_PRICE, current_price)
                     # print(order_id)
             else:
-                print("hold")
+                action_name = "hold"
                 # self.xt_trader.cancel_order_stock(self.acc, order_id)
 
             obs, reward, done, _ = self.env.step(action)
@@ -323,37 +322,23 @@ class PPO_V1(BaseStrategy):
             if obs.shape[0] > 518:
                 sys.obs = obs[:518]  # 截取前 518 个元素
 
-            if order_id != -1:
+            if action_name is not None and len(action_name) > 0:
+                ret = dict()
+                ret['code'] = stock_code
+                ret['price'] = current_price
+                ret['action'] = action_name
+                ret['order_id'] = order_id
+                ret['reward'] = reward
+                ret['net_worth'] = self.env.net_worth
                 acc_info = self.xt_trader.query_stock_asset(self.acc)
                 total_asset = acc_info.total_asset
-                print('[DEBUG]result=', current_price, action, order_id, reward, self.env.net_worth, total_asset)
+                ret['total_asset'] = total_asset
+                # print('[DEBUG]result=', current_price, action, order_id, reward, self.env.net_worth, total_asset)
                 logging.info(
                     f"{stock_code},{current_price},{action},{order_id},{reward},{self.env.net_worth},{total_asset}")
-            # # Plot the net worth over time
-            # plt.plot(worth_list)
-            # plt.xlabel("Time")
-            # plt.ylabel("Net Worth")
-            # plt.title("Net Worth over Time")
-            # plt.show()
+                return ret
 
 
 def get_current_time():
     # return datetime.now().strftime('%Y%m%d %H:%M:%S')
     return datetime.now().strftime('%Y%m%d%H%M%S')
-
-
-if __name__ == "__main__":
-    #os.chdir('D:/tool/pycharm_client/workspace/Hermes')
-    # sys = Hermes()
-    ## 订阅当天所有实时行情
-    period = 'tick'
-    stock_code = '000560.SZ'
-    # stock_code = '603883.SH'
-    # stock_code = '000948.SZ'
-    # xtdata.subscribe_quote(stock_code, period=period, count=-1)  # 设置count = -1来取到当天所有实时行情
-    # 下载每支股票数据
-    field_list = ['time', 'open', 'high', 'low', 'close', 'volume']
-#    is_down_suc = xtdata.download_history_data2(stock_list=[stock_code], period='1m', start_time='20240910093000', end_time='20240920093000')
-#     is_down_suc = xtdata.download_history_data2(stock_list=[stock_code], period='1m', start_time='20240924093000')
-#     xtdata.download_history_data(stock_code, '1m', '20240922')
-    # quit()

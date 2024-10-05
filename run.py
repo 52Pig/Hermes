@@ -54,15 +54,18 @@ class StrategyManagementService:
     async def execute_strategy(self):
         # 调用策略的交易逻辑并记录执行时间
         start_time = time.time()
+        ret_dict = dict()
         try:
-            self.strategy_instance.do()  # 这里可能是一个同步方法，如果是异步请使用 await
+            ret = self.strategy_instance.do()  # 这里可能是一个同步方法，如果是异步请使用 await
+            if ret is not None:
+                ret_dict = ret
         except Exception as e:
             print(f"Error executing strategy {self.name}: {e}")
             tb = traceback.format_exc()
             logger.error(f"Strategy {self.__class__.__name__} encountered an error:\n{tb}")
         end_time = time.time()
         elapsed_time = round((end_time - start_time) * 1000, 5)
-        logger.info(f"Strategy {self.name} execution time: {elapsed_time} ms")
+        logger.info(f"Strategy {self.name}, time: {elapsed_time} ms, ret:{ret_dict}")
 
 
 class MicroserviceManager:

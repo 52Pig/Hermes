@@ -7,3 +7,4 @@ class LimitUp(BaseStrategy):
 
     def do(self):
         print("execute limit up doing...")
+        return {"code":"000001.SZ", "action":"buy", "price":"10.5"}

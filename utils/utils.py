@@ -51,12 +51,14 @@ def get_latest_price(stock_code):
         stock_list=[stock_code],
         field_list=['time', 'close'],
         period='1m',
-        count=1
+        count=-1
     )
     if data is None:
         return None
     # print(data)
     df = data[stock_code]
+    if df is None or df.empty:
+        return None
     # 获取最大时间戳的行
     tdata = df.loc[df['time'].idxmax()]
     # print(tdata)
