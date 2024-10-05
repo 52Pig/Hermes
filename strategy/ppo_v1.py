@@ -19,8 +19,6 @@ import configparser
 from datetime import datetime
 
 from utils import utils
-from xtquant.xttrader import XtQuantTrader
-from xtquant.xttype import StockAccount
 from xtquant import xtdata
 from xtquant import xtconstant
 
@@ -29,7 +27,7 @@ if not os.path.exists("logs"):
 
 # 设置日志
 current_date = datetime.now().strftime('%Y-%m-%d')
-logging.basicConfig(filename=f'logs/ppo_v1_infer_{current_date}.log', level=logging.INFO, format='%(asctime)s %(message)s')
+logging.basicConfig(filename=f'../logs/ppo_v1_infer_{current_date}.log', level=logging.INFO, format='%(asctime)s %(message)s')
 
 
 def infer_trading_strategy(model, data):
@@ -58,29 +56,9 @@ def convert_to_floats(combined_str):
 
 class PPO_V1(BaseStrategy):
     def __init__(self, config):
+        super().__init__(config)
         self.config = config
-        self.init_acc(config)
         self.init_model(config)
-
-    def init_acc(self, config):
-        # 初始化配置
-        # config = configparser.ConfigParser()
-        #config.read('conf/config.ini')
-        # config.read(['conf/config.ini'])
-        path = config.get("client", 'mini_path')
-        acc_name=***
-        print('[mini_path]', path, acc_name)
-        session_id = int(random.randint(100000, 999999))
-        xt_trader = XtQuantTrader(path, session_id)
-        # 链接qmt客户端
-        xt_trader.start()
-        connect_result = xt_trader.connect()
-        # 订阅账户
-        acc = StockAccount(acc_name)
-        subscribe_res = xt_trader.subscribe(acc)
-        self.xt_trader = xt_trader
-        self.acc = acc
-        print('[DEBUG]connect_status=', connect_result, ',subscribe_status=', subscribe_res)
 
     def init_model(self, config):
         #model_dir = "model_dir/model_81000.zip"
@@ -175,9 +153,14 @@ class PPO_V1(BaseStrategy):
         self.obs = obs
         self.env = env
 
-    def do(self):
-        print("[DEBUG]do ppo_v1 ", get_current_time())
+    def do(self, accounts):
+        print("[DEBUG]do ppo_v1 ", get_current_time(), accounts)
         stock_code = '000560.SZ'
+        req_dict = accounts.get("acc_1", {})
+        xt_trader = req_dict.get("xt_trader")
+        acc = req_dict.get("account")
+        # acc_name=***
+
         # 下载每支股票数据
         field_list = ['time', 'open', 'high', 'low', 'close', 'volume']
         xtdata.download_history_data(stock_code, '1m', '20240101')
@@ -286,7 +269,7 @@ class PPO_V1(BaseStrategy):
             if 0 == action:
                 action_name = "buy"
                 # 查询账户余额
-                acc_info = self.xt_trader.query_stock_asset(self.acc)
+                acc_info = xt_trader.query_stock_asset(acc)
                 cash = acc_info.cash
                 # 查询当前股价
                 current_price = utils.get_latest_price(stock_code)
@@ -294,28 +277,27 @@ class PPO_V1(BaseStrategy):
                 ## 若账户余额> 股票价格*100，则买入
                 # 下单
                 if current_price is not None:
-                    # if cash < current_price * 100:
-                    #     continue
-                    order_id = self.xt_trader.order_stock(self.acc, stock_code, xtconstant.STOCK_BUY, 100,
+                    if cash >= current_price * 100:
+                        order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_BUY, 100,
                                                          xtconstant.FIX_PRICE, current_price)
-                    # print('[DEBUG]buy=', current_price, order_id)
+                        # print('[DEBUG]buy=', current_price, order_id)
 
             elif 1 == action:
                 action_name = "sell"
                 # 查询持仓市值
-                acc_info = self.xt_trader.query_stock_asset(self.acc)
+                acc_info = xt_trader.query_stock_asset(acc)
                 marketValue = acc_info.m_dMarketValue
                 # 查询当前股价
                 current_price = utils.get_latest_price(stock_code)
                 # 卖出
                 if current_price is not None:
                     if marketValue > 0:
-                        order_id = self.xt_trader.order_stock(self.acc, stock_code, xtconstant.STOCK_SELL, 100,
+                        order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_SELL, 100,
                                                          xtconstant.FIX_PRICE, current_price)
                     # print(order_id)
             else:
                 action_name = "hold"
-                # self.xt_trader.cancel_order_stock(self.acc, order_id)
+                # xt_trader.cancel_order_stock(self.acc, order_id)
 
             obs, reward, done, _ = self.env.step(action)
             # 在推理之前检查观察形状
@@ -330,7 +312,7 @@ class PPO_V1(BaseStrategy):
                 ret['order_id'] = order_id
                 ret['reward'] = reward
                 ret['net_worth'] = self.env.net_worth
-                acc_info = self.xt_trader.query_stock_asset(self.acc)
+                acc_info = xt_trader.query_stock_asset(acc)
                 total_asset = acc_info.total_asset
                 ret['total_asset'] = total_asset
                 # print('[DEBUG]result=', current_price, action, order_id, reward, self.env.net_worth, total_asset)

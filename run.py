@@ -2,20 +2,29 @@ import asyncio
 import configparser
 import importlib.util
 import os
+import ast
 import time
+import random
 import traceback
 from utils.logger import setup_logging
+
+from xtquant.xttrader import XtQuantTrader
+from xtquant.xttype import StockAccount
+from xtquant import xtdata
+from xtquant import xtconstant
+
 # 设置日志记录
 logger = setup_logging()
 
 class StrategyManagementService:
-    def __init__(self, name, script_path, config_path, interval):
+    def __init__(self, name, script_path, config_path, interval, accounts):
         self.name = name
         self.script_path = script_path
         self.config_path = config_path
         self.interval = interval
         self.strategy_instance = None
         self.load_strategy()
+        self.accounts = accounts
 
     def load_strategy(self):
         spec = importlib.util.spec_from_file_location("strategy", self.script_path)
@@ -35,10 +44,8 @@ class StrategyManagementService:
         return config
 
     async def run(self):
-        '''
-          多个策略同时运行，并行处理任务，执行耗时较长且互不依赖的任务。
+        '''多个策略同时运行，并行处理任务，执行耗时较长且互不依赖的任务。
           不会等待 execute_strategy() 完成，而是立即进入下一个循环。这允许多个 do() 调用同时进行
-        :return:
         '''
         while True:
             try:
@@ -56,7 +63,7 @@ class StrategyManagementService:
         start_time = time.time()
         ret_dict = dict()
         try:
-            ret = self.strategy_instance.do()  # 这里可能是一个同步方法，如果是异步请使用 await
+            ret = self.strategy_instance.do(self.accounts)  # 这里可能是一个同步方法，如果是异步请使用 await
             if ret is not None:
                 ret_dict = ret
         except Exception as e:
@@ -73,6 +80,7 @@ class MicroserviceManager:
         self.config_file = config_file
         self.strategies = []
         self.running_services = {}
+        self.accounts = {}  # 存储所有账户信息
 
     async def load_config(self):
         config = configparser.ConfigParser()
@@ -81,18 +89,43 @@ class MicroserviceManager:
         config.read(self.config_file)
         return config
 
+    async def initialize_accounts(self, config):
+        acc_list = ast.literal_eval(config['client'].get("acc_list", "{}"))  # 解析账户列表
+        print(acc_list)
+        mini_path = config['client'].get("mini_path", "")
+        for acc_key, acc_name in acc_list.items():
+            session_id = int(random.randint(100000, 999999))
+            xt_trader = XtQuantTrader(mini_path, session_id)
+            xt_trader.start()
+            print('acc_name', acc_name)
+            connect_result = xt_trader.connect()
+            acc = StockAccount(acc_name)
+            subscribe_res = xt_trader.subscribe(acc)
+
+            # 封装 xt_trader 和账户到字典中
+            self.accounts[acc_key] = {
+                'xt_trader': xt_trader,
+                'account': acc,
+                'acc_name': acc_name
+            }
+
+            print(f'[DEBUG] Account {acc_key} initialized, connect_status={connect_result}, subscribe_status={subscribe_res}')
+
     async def start_services(self):
         config = await self.load_config()
+        await self.initialize_accounts(config)  # 初始化所有账户
+
         strategies = config['strategy']['name'].split(',')
 
         for strategy_name in strategies:
             strategy_config = config[strategy_name.strip()]
             name = strategy_config['name']
+            acc_name=***
             script_path = strategy_config['path']
             config_path = strategy_config['config_file']
             interval = int(strategy_config['interval'])  # 单位为秒
 
-            service = StrategyManagementService(name, script_path, config_path, interval)
+            service = StrategyManagementService(name, script_path, config_path, interval, self.accounts)
             self.strategies.append(service)
             # 使用 asyncio.create_task 创建任务并等待
             task = asyncio.create_task(service.run())
@@ -105,7 +138,7 @@ class MicroserviceManager:
                     logger.info(f"Restarting strategy {name}...")
                     config = await self.load_config()
                     strategy_config = config[name.strip()]
-                    service = StrategyManagementService(name, strategy_config['path'], strategy_config['config_file'], int(strategy_config['interval']))
+                    service = StrategyManagementService(name, strategy_config['path'], strategy_config['config_file'], int(strategy_config['interval']), self.accounts)
                     new_task = asyncio.create_task(service.run())
                     self.running_services[name] = new_task
             await asyncio.sleep(10)  # 每10秒检查一次服务状态

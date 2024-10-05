@@ -3,5 +3,5 @@ class BaseStrategy:
         self.config = config
         print(f"Initializing strategy with parameters: {self.config}")
 
-    def do(self):
+    def do(self, accounts):
         print(f"do...")
