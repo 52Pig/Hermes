@@ -120,7 +120,6 @@ class MicroserviceManager:
         for strategy_name in strategies:
             strategy_config = config[strategy_name.strip()]
             name = strategy_config['name']
-            acc_name=***
             script_path = strategy_config['path']
             config_path = strategy_config['config_file']
             interval = int(strategy_config['interval'])  # 单位为秒
