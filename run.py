@@ -29,6 +29,8 @@ class StrategyManagementService:
 
     def load_config(self):
         config = configparser.ConfigParser()
+        # with open(self.config_path, 'r', encoding='utf-8') as f:   ##文件必须存在
+        #     config.read_file(f)
         config.read(self.config_path)
         return config
 
@@ -71,6 +73,8 @@ class MicroserviceManager:
 
     async def load_config(self):
         config = configparser.ConfigParser()
+        # with open(self.config_file, 'r', encoding='utf-8') as f:
+        #     config.read_file(f)
         config.read(self.config_file)
         return config
 
