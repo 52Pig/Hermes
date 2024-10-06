@@ -2,10 +2,15 @@
 
 import random
 import configparser
-from xtquant.xttrader import XtQuantTrader
-from xtquant.xttype import StockAccount
+# from xtquant.xttrader import XtQuantTrader
+# from xtquant.xttype import StockAccount
 
-def main():
+import time
+import asyncio
+import xtquant
+# from xtquant import xtdata, xttrader
+
+async def main():
     # 初始化配置
     config = configparser.ConfigParser()
     config.read('conf/config.ini')
@@ -24,7 +29,18 @@ def main():
 
     print('[DEBUG]connect_status=', connect_result, ',subscribe_status=', subsribe_result)
 
+    ## 初始化策略管理器
+    manager = StrategyManager()
+
+    # 假设监控三只股票
+    manager.add_strategy('000001.SZ')  # 股票代码1
+    manager.add_strategy('000002.SZ')  # 股票代码2
+    manager.add_strategy('000003.SZ')  # 股票代码3
+
+    # 启动所有策略
+    await asyncio.run(manager.run_all_strategies())
+
 
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())

@@ -11,7 +11,7 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from stable_baselines3 import PPO
 from ppo_v1_train import TradingEnvironment
-
+from utils import utils
 import time
 import random
 import logging
@@ -24,10 +24,10 @@ from xtquant import xtconstant
 
 if not os.path.exists("logs"):
     os.makedirs('logs')
-
-# 设置日志
-current_date = datetime.now().strftime('%Y-%m-%d')
-logging.basicConfig(filename=f'../logs/ppo_v1_infer_{current_date}.log', level=logging.INFO, format='%(asctime)s %(message)s')
+#
+# # 设置日志
+# current_date = datetime.now().strftime('%Y-%m-%d')
+# logging.basicConfig(filename=f'../logs/ppo_v1_infer_{current_date}.log', level=logging.INFO, format='%(asctime)s %(message)s')
 
 
 def infer_trading_strategy(model, data):
@@ -154,7 +154,7 @@ class PPO_V1(BaseStrategy):
         self.env = env
 
     def do(self, accounts):
-        print("[DEBUG]do ppo_v1 ", get_current_time(), accounts)
+        print("[DEBUG]do ppo_v1 ", utils.get_current_time(), accounts)
         stock_code = '000560.SZ'
         req_dict = accounts.get("acc_1", {})
         xt_trader = req_dict.get("xt_trader")
@@ -316,11 +316,6 @@ class PPO_V1(BaseStrategy):
                 total_asset = acc_info.total_asset
                 ret['total_asset'] = total_asset
                 # print('[DEBUG]result=', current_price, action, order_id, reward, self.env.net_worth, total_asset)
-                logging.info(
-                    f"{stock_code},{current_price},{action},{order_id},{reward},{self.env.net_worth},{total_asset}")
+                # logging.info(
+                #     f"{stock_code},{current_price},{action},{order_id},{reward},{self.env.net_worth},{total_asset}")
                 return ret
-
-
-def get_current_time():
-    # return datetime.now().strftime('%Y%m%d %H:%M:%S')
-    return datetime.now().strftime('%Y%m%d%H%M%S')

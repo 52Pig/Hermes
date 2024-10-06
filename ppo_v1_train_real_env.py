@@ -40,7 +40,7 @@ class TradingEnvironment(gym.Env):
         config.read('conf/config.ini')
         # config.read(['conf/config.ini'])
         path = config.get("client", 'mini_path')
-        acc_name=***
+        acc_name = config.get("client", "acc_name")
         # print('[mini_path]', path)
         session_id = int(random.randint(100000, 999999))
         self.xt_trader = XtQuantTrader(path, session_id)

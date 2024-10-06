@@ -1,6 +1,6 @@
 
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 from xtquant import xtdata
 
 def to_onehot(value, num_classes):
@@ -23,7 +23,6 @@ def to_onehot(value, num_classes):
     else:
         raise ValueError(f"Value {value} is out of range for {num_classes} classes.")
     return onehot_encoded
-
 
 def parse_time(time_str):
     ''' 根据时间获取处理后的时间特征
@@ -66,5 +65,48 @@ def get_latest_price(stock_code):
         return tdata['close']
     else:
         return None
+
+def get_current_time():
+    return datetime.now().strftime('%Y%m%d %H:%M:%S')
+
+def get_current_date():
+    return datetime.now().strftime('%Y%m%d')
+
+def get_past_date(days):
+    # 计算过去的日期
+    current_date = datetime.now()
+    past_date = current_date - timedelta(days=days)
+    return past_date.date()
+
+def get_past_trade_date(n):
+    """ 获取过去N个交易日
+    """
+    import a_trade_calendar
+    # 获取今天的日期
+    today = a_trade_calendar.get_latest_trade_date()
+    # 计算过去N个交易日的日期
+    # 假设我们要查询过去5个交易日
+    trade_dates = a_trade_calendar.get_pre_trade_date(today, n)
+    print("[utils]get_past_trade_date:today=", today, ";trade_dates=", trade_dates)
+    return trade_dates
+
+def get_yesterday_close_price(stock_code):
+    """获取股票昨日收盘价格的函数"""
+    data = xtdata.get_market_data_ex(
+        stock_list=[stock_code],
+        field_list=['time', 'close'],
+        period='1d',
+        count=2  # 获取最近两天的数据
+    )
+    if data is None:
+        return None
+    df = data[stock_code]
+    if df is None or df.empty:
+        return None
+    if len(df) < 2:
+        return None  # 不足两天数据，返回None
+    # 获取前一天的收盘价格
+    yesterday_close = df.iloc[-2]['close']  # 倒数第二行是昨日的收盘价
+    return yesterday_close
 
 
