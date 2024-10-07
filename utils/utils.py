@@ -46,21 +46,21 @@ def parse_time(time_str):
 def get_latest_price(stock_code):
     """# 定义获取股票当前价格的函数
     """
+    # xtdata.download_history_data(stock_code, '1m', '20240901')
     data = xtdata.get_market_data_ex(
+        ['time', 'close'],
         stock_list=[stock_code],
-        field_list=['time', 'close'],
         period='1m',
-        count=-1
-    )
+        start_time='20240808093000')
     if data is None:
         return None
-    # print(data)
+    # print('[utils]get_latest_price, data=', data)
     df = data[stock_code]
     if df is None or df.empty:
         return None
     # 获取最大时间戳的行
     tdata = df.loc[df['time'].idxmax()]
-    # print(tdata)
+    # print('[utils]get_latest_price, tdata=', tdata)
     if 'close' in tdata:
         return tdata['close']
     else:

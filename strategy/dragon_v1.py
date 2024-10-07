@@ -64,77 +64,118 @@ class Dragon_V1(BaseStrategy):
 
         ## 股价价格筛选
         # xtdata.download_history_data(stock_code, '1m', '20240601')
-        xtdata.download_history_data2(recall_stock, period='1m', start_time='20240601')
+        print("download start!")
+        slist = [code for code,name in recall_stock]
+        xtdata.download_history_data2(slist, period='1d', start_time='20240601')
+        print("download finish!")
 
         eff_stock_list = list()
         for stock_code, stock_name in recall_stock:
             latest_price = utils.get_latest_price(stock_code)
+            if latest_price is None:
+                print("latest_price=", latest_price, stock_code)
+                continue
             if latest_price < 2.0 or latest_price > 40.0:
-                print("[DEBUG]filter latest price", stock_code, stock_name)
+                # print("[DEBUG]filter latest price", stock_code, stock_name)
                 continue
             eff_stock_list.append(stock_code)
 
         # 计算最近N个交易日连板的天数
         N = 10
         last_n = utils.get_past_trade_date(N)
+        print('last_n=', last_n, len(eff_stock_list), eff_stock_list)
         pre_ztgp_stocks = get_ztgp_days(eff_stock_list, last_n)
+        print('pre_ztgp_stocks=', pre_ztgp_stocks)
         sorted_stocks = filter_and_sort_stocks(pre_ztgp_stocks)
+        print("sorted_stocks=", sorted_stocks)
         if len(sorted_stocks) == 0:
             return dict()
-        stock_code, limit_up_days, yesterday_volume = sorted_stocks[0]
-        #
-        cur_time = utils.get_current_time()
-        gy_time = datetime.datetime.strptime("22:01", "%H:%M").time()
-        jj_time = datetime.datetime.strptime("09:18", "%H:%M").time()
-        start_time = datetime.datetime.strptime("09:31", "%H:%M").time()
-        mid_start_time = datetime.datetime.strptime("11:30", "%H:%M").time()
-        mid_end_time = datetime.datetime.strptime("13:01", "%H:%M").time()
-        end_time = datetime.datetime.strptime("14:55", "%H:%M").time()
 
-        # 挂隔夜单买入
-        gy_order_id = ''
-        if cur_time == gy_time:
-            ## 买入委托
-            action_name = "buy"
-            # 查询账户余额
-            acc_info = xt_trader.query_stock_asset(acc)
-            cash = acc_info.cash
-            # 查询当前股价
-            current_price = utils.get_latest_price(stock_code)
-            ## 若账户余额> 股票价格*100，则买入
-            # 下单
-            if current_price is not None:
-                if cash >= current_price * 100:
-                    order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_BUY, 100,
-                                                     xtconstant.FIX_PRICE, current_price)
-                    gy_order_id = order_id
-        elif cur_time == jj_time:
-            ## 检查该股票的封单量是否相同连板数中最高
-            is_highest = is_highest_bid(stock_code)
-            if not is_highest:
-                action_name = 'cancel'
-                ## 取消买入委托的订单
-                xt_trader.cancel_order_stock(acc, gy_order_id)
+        # 相同板数成交量最大的作为买入
+        pools_list = list()
+        limit_2_index = 0
+        limit_3_index = 0
+        limit_4_index = 0
+        limit_5_index = 0
+        for content in sorted_stocks:
+            stock_code, limit_up_days, yesterday_volume = content
+            if limit_up_days == 2 and limit_2_index == 0:
+                pools_list.append(content)
+                limit_2_index += 1
+            elif limit_up_days == 3 and limit_3_index == 0:
+                pools_list.append(content)
+                limit_3_index += 1
+            elif limit_up_days == 4 and limit_4_index == 0:
+                pools_list.append(content)
+                limit_4_index += 1
+            elif limit_up_days == 5 and limit_5_index == 0:
+                pools_list.append(content)
+                limit_5_index += 1
 
-        elif start_time <= cur_time <= mid_start_time or mid_end_time <= cur_time <= end_time:
-            # 检查当前时间是否在 9:30 到 15:00 之间
-            #1，每分钟监测股价走势，若股价 < 前一日收盘价则卖出；
-            #2，每分钟监测股价走势，若股价 > 前一日收盘价，计算(股价 - 前一日收盘价) / 前一日收盘价 > 5 % 则持有观察，若 < 5 % 则以当前价格卖出。
-            print("action_name")
+        ret_list = list()
+        for stock_code, limit_up_days, yesterday_volume in pools_list:
+            cur_time = datetime.datetime.now().time()
+            gy_time = datetime.datetime.strptime("22:01", "%H:%M").time()
+            jj_start_time = datetime.datetime.strptime("09:10", "%H:%M").time()
+            jj_time = datetime.datetime.strptime("09:18", "%H:%M").time()
+            start_time = datetime.datetime.strptime("09:31", "%H:%M").time()
+            mid_start_time = datetime.datetime.strptime("11:30", "%H:%M").time()
+            mid_end_time = datetime.datetime.strptime("13:01", "%H:%M").time()
+            end_time = datetime.datetime.strptime("14:55", "%H:%M").time()
+
+            # 挂隔夜单买入
+            action_name = ''
+            gy_order_id = ''
             current_price = utils.get_latest_price(stock_code)
-            yesterday_close_price = utils.get_yesterday_close_price(stock_code)
-            if ( current_price - yesterday_close_price ) / yesterday_close_price < 0.02:
-                action_name = "sell"
-                # 查询持仓市值
+            order_id = -1
+            if gy_time <= cur_time or cur_time >= start_time:
+                ## 买入委托
+                action_name = "buy"
+                # 查询账户余额
                 acc_info = xt_trader.query_stock_asset(acc)
-                marketValue = acc_info.m_dMarketValue
-                # 卖出
+                cash = acc_info.cash
+                ## 若账户余额> 股票价格*100，则买入
+                # print(action_name, current_price)
+                # 下单
                 if current_price is not None:
-                    if marketValue > 0:
-                        order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_SELL, 100,
+                    if cash >= current_price * 100:
+                        order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_BUY, 100,
                                                          xtconstant.FIX_PRICE, current_price)
+            elif cur_time == jj_time:
+                ## 检查该股票的封单量是否相同连板数中最高
+                is_highest = is_highest_bid(stock_code)
+                if not is_highest:
+                    action_name = 'cancel'
+                    ## 取消买入委托的订单
+                    xt_trader.cancel_order_stock(acc, gy_order_id)
 
+            elif start_time <= cur_time <= mid_start_time or mid_end_time <= cur_time <= end_time:
+                # 检查当前时间是否在 9:30 到 15:00 之间
+                #1，每分钟监测股价走势，若股价 < 前一日收盘价则卖出；
+                #2，每分钟监测股价走势，若股价 > 前一日收盘价，计算(股价 - 前一日收盘价) / 前一日收盘价 > 5 % 则持有观察，若 < 5 % 则以当前价格卖出。
 
+                yesterday_close_price = utils.get_yesterday_close_price(stock_code)
+                if ( current_price - yesterday_close_price ) / yesterday_close_price < 0.02:
+                    action_name = "sell"
+                    # print(action_name, current_price)
+                    # 查询持仓市值
+                    acc_info = xt_trader.query_stock_asset(acc)
+                    marketValue = acc_info.m_dMarketValue
+                    # 卖出
+                    if current_price is not None:
+                        if marketValue > 0:
+                            order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_SELL, 100,
+                                                             xtconstant.FIX_PRICE, current_price)
+            ret = dict()
+            ret['code'] = stock_code
+            ret['price'] = current_price
+            ret['action'] = action_name
+            ret['order_id'] = order_id
+            acc_info = xt_trader.query_stock_asset(acc)
+            total_asset = acc_info.total_asset
+            ret['total_asset'] = total_asset
+            ret_list.append(ret)
+        return {"msg":ret_list}
 
 
 
@@ -170,6 +211,7 @@ def get_yesterday_date():
 def filter_and_sort_stocks(ztgp_stocks):
     """排除2天以下和5天以上涨停的股票，并按当日成交量排序"""
     filtered_stocks = []
+
     for stock_code, limit_up_days in ztgp_stocks:
         if 2 <= limit_up_days <= 5:
             # 获取昨日的成交量数据
@@ -180,41 +222,53 @@ def filter_and_sort_stocks(ztgp_stocks):
                 start_time='20240601'  # 根据需要调整时间范围
             )
 
-            if len(volume_data) < 2:
+            # 处理返回的数据
+            if stock_code not in volume_data or len(volume_data[stock_code]) < 2:
                 continue  # 数据不足，跳过
-            yesterday_volume = volume_data['volume'][-1]  # 昨日成交量
+
+            stock_volume_data = volume_data[stock_code]
+            yesterday_volume = stock_volume_data['volume'].iloc[-1]  # 昨日成交量
             filtered_stocks.append((stock_code, limit_up_days, yesterday_volume))
 
     # 按照昨日成交量从大到小排序
-    sorted_stocks = sorted(filtered_stocks, key=lambda x: x[2], reverse=True)
+    sorted_stocks = sorted(filtered_stocks, key=lambda x: int(x[2]), reverse=True)
     return sorted_stocks
 
-
 def get_ztgp_days(index_stocks, last_n):
-    """定义获取昨日涨停股票的函数
-     存储涨停股票的列表
+    """获取昨日涨停股票及其涨停天数
+    Args:
+        index_stocks: 股票代码列表
+        start_date: 起始计算日期，格式为'YYYYMMDD'
+    Returns:
+        涨停股票及其涨停天数的列表
     """
     ztgp_stocks = []
+    start_date = last_n.replace('-', '')
+    # print("----start_date------", start_date)
     for stock_code in index_stocks:
         data = xtdata.get_market_data_ex(
             stock_list=[stock_code],
             field_list=['time', 'close'],
             period='1d',
-            start_time=last_n
+            start_time=start_date
         )
 
-        if len(data) < 2:
+        # 处理返回的数据
+        if stock_code not in data or len(data[stock_code]) < 2:
             ztgp_stocks.append((stock_code, 0))  # 数据不足，返回0天数
             continue
 
+        stock_data = data[stock_code]
+
         # 检查昨日是否涨停
-        if (data['close'][1] - data['close'][0]) / data['close'][0] < 0.097:
+        if (stock_data['close'].iloc[-1] - stock_data['close'].iloc[-2]) / stock_data['close'].iloc[-2] < 0.097:
             ztgp_stocks.append((stock_code, 0))  # 昨天没有涨停，返回0天数
             continue
 
         limit_up_count = 0
-        for i in range(len(data) - 1, 0, -1):  # 倒序检查
-            if (data['close'][i] - data['close'][i - 1]) / data['close'][i - 1] >= 0.097:
+        for i in range(len(stock_data) - 1, 0, -1):  # 倒序检查
+            if (stock_data['close'].iloc[i] - stock_data['close'].iloc[i - 1]) / stock_data['close'].iloc[
+                i - 1] >= 0.097:
                 limit_up_count += 1
             else:
                 break  # 遇到不满足涨停条件，停止计数

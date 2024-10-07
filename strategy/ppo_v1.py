@@ -168,11 +168,11 @@ class PPO_V1(BaseStrategy):
         start_time = datetime.strptime("09:31", "%H:%M").time()
         mid_start_time = datetime.strptime("11:30", "%H:%M").time()
         mid_end_time = datetime.strptime("13:01", "%H:%M").time()
-        end_time = datetime.strptime("14:55", "%H:%M").time()
+        end_time = datetime.strptime("19:55", "%H:%M").time()
 
         # 检查当前时间是否在 9:30 到 15:00 之间
         if start_time <= current_time <= mid_start_time or mid_end_time <= current_time <= end_time:
-            kline_data = xtdata.get_market_data_ex(field_list=field_list, stock_list=[stock_code], period='1m',
+            kline_data = xtdata.get_market_data_ex(field_list, stock_list=[stock_code], period='1m',
                                                    start_time='20240923093000')
 
             # print(kline_data)
@@ -273,11 +273,18 @@ class PPO_V1(BaseStrategy):
                 cash = acc_info.cash
                 # 查询当前股价
                 current_price = utils.get_latest_price(stock_code)
+                # print("[DEBUG]current_price", current_price, ';cash=', cash)
+                has_stock_list = xt_trader.query_stock_positions(acc)
+                exist_volume = 0
+                for stock in has_stock_list:
+                    if stock.stock_code != '000560.SZ':
+                        continue
+                    exist_volume = stock.volume
 
-                ## 若账户余额> 股票价格*100，则买入
+                ## 若账户余额> 股票价格*100，则买入 && 持仓数量 < 2000
                 # 下单
                 if current_price is not None:
-                    if cash >= current_price * 100:
+                    if cash >= current_price * 100 and current_price > 0 and exist_volume < 2000:
                         order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_BUY, 100,
                                                          xtconstant.FIX_PRICE, current_price)
                         # print('[DEBUG]buy=', current_price, order_id)
@@ -309,6 +316,7 @@ class PPO_V1(BaseStrategy):
                 ret['code'] = stock_code
                 ret['price'] = current_price
                 ret['action'] = action_name
+                ret['action_code'] = action.item()
                 ret['order_id'] = order_id
                 ret['reward'] = reward
                 ret['net_worth'] = self.env.net_worth
@@ -318,4 +326,4 @@ class PPO_V1(BaseStrategy):
                 # print('[DEBUG]result=', current_price, action, order_id, reward, self.env.net_worth, total_asset)
                 # logging.info(
                 #     f"{stock_code},{current_price},{action},{order_id},{reward},{self.env.net_worth},{total_asset}")
-                return ret
+                return {"msg":[ret]}
