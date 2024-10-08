@@ -149,10 +149,21 @@ class Dragon_V1(BaseStrategy):
                     if wt_info.stock_code != stock_code:
                         continue
                     exists_wt = 1
-                ## 若账户余额> 股票价格*100，则买入 并且只有1手
-                # 下单
+                ## 满足以下条件则买入
+                ##   账户余额足够买入：账户余额> 股票价格*100
+                ##   当前委托单中不存在此股
+                ## 均衡仓位:
+                ##   若股价<5.0,则最多允许买入400；
+                ##   若8.0>=股价>5.0最多允许买入300；
+                ##   若10.0>=股价>8.0,最多允许买入200;
+                ##   若股价>10.0,最多允许买入100；
                 if current_price is not None:
-                    if cash >= current_price * 100 and exists_volume < 200 and exists_wt == 0:
+                    if cash >= current_price * 100 and exists_wt == 0   \
+                        and (  (0 < current_price <= 5.0 and exists_volume < 400)
+                             or (5.0 < current_price <= 8.0 and exists_volume < 300)
+                             or (8.0 < current_price <= 10.0 and exists_volume < 200)
+                             or (10.0 < current_price and exists_volume < 100)
+                        ):
                         order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_BUY, 100,
                                                          xtconstant.FIX_PRICE, current_price)
             elif cur_time == jj_time:
