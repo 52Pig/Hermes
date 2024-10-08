@@ -66,12 +66,12 @@ class Dragon_V1(BaseStrategy):
         # xtdata.download_history_data(stock_code, '1m', '20240601')
         print("download start!")
         slist = [code for code,name in recall_stock]
-        xtdata.download_history_data2(slist, period='1d', start_time='20240601')
+        xtdata.download_history_data2(slist, period='1d', start_time='20240901')
         print("download finish!")
 
         eff_stock_list = list()
         for stock_code, stock_name in recall_stock:
-            latest_price = utils.get_latest_price(stock_code)
+            latest_price = utils.get_latest_price(stock_code, is_download=False)
             if latest_price is None:
                 print("latest_price=", latest_price, stock_code)
                 continue
@@ -125,8 +125,7 @@ class Dragon_V1(BaseStrategy):
             is_trade_time = start_time <= cur_time <= mid_start_time or mid_end_time <= cur_time <= end_time
             # 挂隔夜单买入
             action_name = ''
-            gy_order_id = ''
-            current_price = utils.get_latest_price(stock_code)
+            current_price = utils.get_latest_price(stock_code, is_download=True)
             order_id = -1
             if gy_time <= cur_time or is_trade_time:
                 ## 买入委托
@@ -134,19 +133,28 @@ class Dragon_V1(BaseStrategy):
                 # 查询账户余额
                 acc_info = xt_trader.query_stock_asset(acc)
                 cash = acc_info.cash
-
-
                 has_stock_list = xt_trader.query_stock_positions(acc)
+                #print("[DEBUG]dragon_v1 has_stock_list=", has_stock_list)
+                exists_volume = 0
                 for stock in has_stock_list:
+                    # print('[DEBUG]dragon_v1 action=', action_name, current_price, stock.volume, stock.stock_code, stock_code)
                     if stock.stock_code != stock_code:
                         continue
-                    ## 若账户余额> 股票价格*100，则买入 并且只有1手
-                    # print(action_name, current_price)
-                    # 下单
-                    if current_price is not None:
-                        if cash >= current_price * 100 and stock.volume < 200:
-                            order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_BUY, 100,
-                                                             xtconstant.FIX_PRICE, current_price)
+                    exists_volume = stock.volume
+                ## 当前是否有委托单
+                exists_wt = 0
+                wt_infos = xt_trader.query_stock_orders(acc, True)
+                for wt_info in wt_infos:
+                    # print(wt_info.stock_code, wt_info.order_volume, wt_info.price)
+                    if wt_info.stock_code != stock_code:
+                        continue
+                    exists_wt = 1
+                ## 若账户余额> 股票价格*100，则买入 并且只有1手
+                # 下单
+                if current_price is not None:
+                    if cash >= current_price * 100 and exists_volume < 200 and exists_wt == 0:
+                        order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_BUY, 100,
+                                                         xtconstant.FIX_PRICE, current_price)
             elif cur_time == jj_time:
                 ## 检查该股票的封单量是否相同连板数中最高
                 is_highest = is_highest_bid(stock_code)
@@ -155,12 +163,14 @@ class Dragon_V1(BaseStrategy):
                     ## 取消买入委托的订单
                     xt_trader.cancel_order_stock(acc, order_id)
 
-            elif is_trade_time:
+            ## 实时监测股价走势
+            if is_trade_time:
                 # 检查当前时间是否在 9:30 到 15:00 之间
                 #1，每分钟监测股价走势，若股价 < 前一日收盘价则卖出；
                 #2，每分钟监测股价走势，若股价 > 前一日收盘价，计算(股价 - 前一日收盘价) / 前一日收盘价 > 5 % 则持有观察，若 < 5 % 则以当前价格卖出。
 
                 yesterday_close_price = utils.get_yesterday_close_price(stock_code)
+                print("[DEBUG]dragon_v1 sell yesterday_close_price=", yesterday_close_price)
                 if ( current_price - yesterday_close_price ) / yesterday_close_price < 0.02:
                     action_name = "sell"
                     # print(action_name, current_price)

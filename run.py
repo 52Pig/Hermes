@@ -90,7 +90,7 @@ class MicroserviceManager:
         return config
 
     async def initialize_accounts(self, config):
-        acc_list = ast.literal_eval(config['client'].get("acc_list", "{}"))  # 解析账户列表
+        acc_list=***
         print(acc_list)
         mini_path = config['client'].get("mini_path", "")
         for acc_key, acc_name in acc_list.items():
@@ -144,7 +144,7 @@ class MicroserviceManager:
 
     async def reload_config(self):
         while True:
-            await asyncio.sleep(300)  # 每5分钟热加载一次配置
+            await asyncio.sleep(1800)  # 每30分钟热加载一次配置
             await self.start_services()  # 重新加载配置并启动服务
 
 

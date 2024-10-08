@@ -43,10 +43,11 @@ def parse_time(time_str):
 
     return dt, year_day, year_month, month_day, week_day, hour_of_day, minute_of_hour
 
-def get_latest_price(stock_code):
+def get_latest_price(stock_code, is_download=False):
     """# 定义获取股票当前价格的函数
     """
-    # xtdata.download_history_data(stock_code, '1m', '20240901')
+    if is_download:
+        xtdata.download_history_data(stock_code, '1m', '20240901')
     data = xtdata.get_market_data_ex(
         ['time', 'close'],
         stock_list=[stock_code],

@@ -70,3 +70,13 @@ for stock in has_stock_list:
 # stock_code1=
 # volume= 100
 # yesterday_volume= 100
+
+## 委托信息
+wt_infos = xt_trader.query_stock_orders(acc,True )
+for wt_info in wt_infos:
+    print(wt_info.stock_code, wt_info.order_volume, wt_info.price)
+    # print(wt_info.stock_code)
+    # print(wt_info.stock_code)
+    # print(wt_info.stock_code)
+
+
