@@ -127,6 +127,7 @@ class Dragon_V1(BaseStrategy):
             action_name = ''
             current_price = utils.get_latest_price(stock_code, is_download=True)
             order_id = -1
+            sell_price = -1
             if gy_time <= cur_time or is_trade_time:
                 ## 买入委托
                 action_name = "buy"
@@ -191,12 +192,15 @@ class Dragon_V1(BaseStrategy):
                     # 卖出
                     if current_price is not None:
                         if marketValue > 0:
+                            # 为了避免无法出逃，这里
+                            sell_price = round(current_price - current_price * 0.01, 2)
                             order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_SELL, 100,
-                                                             xtconstant.FIX_PRICE, current_price)
+                                                             xtconstant.FIX_PRICE, sell_price)
             ret = dict()
             ret['code'] = stock_code
             ret['price'] = current_price
             ret['action'] = action_name
+            ret['sell_price'] = sell_price
             ret['order_id'] = order_id
             acc_info = xt_trader.query_stock_asset(acc)
             total_asset = acc_info.total_asset
