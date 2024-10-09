@@ -110,4 +110,35 @@ def get_yesterday_close_price(stock_code):
     yesterday_close = df.iloc[-2]['close']  # 倒数第二行是昨日的收盘价
     return yesterday_close
 
+def get_close_price(stock_code, last_n=1):
+    """获取股票过去第 n 天收盘价格的函数"""
+    # 获取最近 last_n+1 天的数据
+    data = xtdata.get_market_data_ex(
+        stock_list=[stock_code],
+        field_list=['time', 'close'],
+        period='1d',
+        count=last_n + 1
+    )
+    if data is None:
+        return None
+    df = data[stock_code]
+    if df is None or df.empty:
+        return None
+    if len(df) < last_n + 1:
+        return None  # 数据不足，返回 None
+    # 获取过去第 n 天的收盘价格
+    close_price = df.iloc[-(last_n + 1)]['close']
+    return close_price
 
+
+if __name__ == "__main__":
+    stock_code_list = ["600570.SH", "002261.SZ"]
+    for stock_code in stock_code_list:
+        lastest_price = get_latest_price(stock_code, is_download=True)
+        print('stock_code=', stock_code, ';lastest_price = ', lastest_price)
+        last_1d_close_price = get_yesterday_close_price(stock_code)
+        last_1d_c_price = get_close_price(stock_code)
+        print('last_1d_close_price=', last_1d_close_price, last_1d_c_price)
+
+        last_2d_c_price = get_close_price(stock_code, last_n=2)
+        print('last_2d_close_price=', last_2d_c_price)

@@ -1,6 +1,7 @@
 #coding=gbk
 
 import time
+import json
 import datetime
 import a_trade_calendar
 from xtquant import xtdata
@@ -37,7 +38,6 @@ class Dragon_V1(BaseStrategy):
         xt_trader = req_dict.get("xt_trader")
         acc = req_dict.get("account")
         # acc_name = req_dict.get("acc_name")
-
         # 查询沪深所有股票
         index_stocks = xtdata.get_stock_list_in_sector(target_code)
         ## 筛选出有效召回池
@@ -59,6 +59,11 @@ class Dragon_V1(BaseStrategy):
             if stock_code.startswith("3"):
                 # print("[DEBUG]filter_chuangyeban=", stock_code, stock_name)
                 continue
+            ## 是否停牌
+            ins_status = instrument_detail.get("InstrumentStatus",0)
+            if ins_status >= 1:
+                print("[DEBUG]=instrumentStatus", ins_status, stock_code, stock_name)
+                continue
             recall_stock.append((stock_code, stock_name))
         #print(len(recall_stock), recall_stock)
 
@@ -71,7 +76,7 @@ class Dragon_V1(BaseStrategy):
 
         eff_stock_list = list()
         for stock_code, stock_name in recall_stock:
-            latest_price = utils.get_latest_price(stock_code, is_download=False)
+            latest_price = utils.get_close_price(stock_code, last_n=1)
             if latest_price is None:
                 print("latest_price=", latest_price, stock_code)
                 continue
@@ -112,103 +117,117 @@ class Dragon_V1(BaseStrategy):
                 pools_list.append(content)
                 limit_5_index += 1
 
-        ret_list = list()
+        ## 輔助時間
+        cur_time = datetime.datetime.now().time()
+        gy_time = datetime.datetime.strptime("22:01", "%H:%M").time()
+        jj_start_time = datetime.datetime.strptime("09:15", "%H:%M").time()
+        jj_end_time = datetime.datetime.strptime("09:19", "%H:%M").time()
+        start_time = datetime.datetime.strptime("09:31", "%H:%M").time()
+        mid_start_time = datetime.datetime.strptime("11:30", "%H:%M").time()
+        mid_end_time = datetime.datetime.strptime("13:01", "%H:%M").time()
+        end_time = datetime.datetime.strptime("14:55", "%H:%M").time()
+        is_trade_time = start_time <= cur_time <= mid_start_time or mid_end_time <= cur_time <= end_time
+        is_jj_time = jj_start_time <= cur_time <= jj_end_time
+
+        ## 不在交易时间不操作
+        if not is_trade_time:
+            return json.dumps(dict())
+
+        ## 查看是否持仓，若持仓则监控股价是否低于预期，若低于预期则卖出，否则一直持有
+        ## 若没有持仓，则监控股价，选择买入
+        # 記錄賣出日志
+        sell_list = list()
+        # 查询持仓股票
+        has_stock_obj = xt_trader.query_stock_positions(acc)
+        has_stock_list = list()
+        for has_stock in has_stock_obj:
+            # print('持仓总市值=market_value=', has_stock.market_value)
+            # print('成本=open_price=', has_stock.open_price)
+            has_volume = has_stock.volume
+            has_stock_code = has_stock.stock_code
+            if has_stock_code == '000560.SZ':
+                continue
+            has_stock_list.append(has_stock_code)
+            last_1d_close_price = utils.get_close_price(has_stock_code, last_n=1)
+            last_price = utils.get_latest_price(has_stock_code, is_download=True)
+            # print("sell_info=", has_volume, last_price, last_1d_close_price, has_stock_code)
+            if has_volume > 0 and (last_price - last_1d_close_price) / last_1d_close_price < 0.02:
+                # 为了避免无法出逃
+                sell_price = round(last_price - last_price * 0.01, 2)
+                order_id = xt_trader.order_stock(acc, has_stock_code, xtconstant.STOCK_SELL, has_volume,
+                                                 xtconstant.FIX_PRICE, sell_price)
+                sell = dict()
+                sell['code'] = has_stock_code
+                sell['price'] = sell_price
+                sell['action'] = 'sell'
+                sell['order_id'] = order_id
+                sell['volume'] = has_volume
+                sell_list.append(sell)
+
+        ## 买入委托
+        buy_list = list()
+        # 查询账户余额
+        acc_info = xt_trader.query_stock_asset(acc)
+        cash = acc_info.cash
         for stock_code, limit_up_days, yesterday_volume in pools_list:
-            cur_time = datetime.datetime.now().time()
-            gy_time = datetime.datetime.strptime("22:01", "%H:%M").time()
-            jj_start_time = datetime.datetime.strptime("09:10", "%H:%M").time()
-            jj_time = datetime.datetime.strptime("09:18", "%H:%M").time()
-            start_time = datetime.datetime.strptime("09:31", "%H:%M").time()
-            mid_start_time = datetime.datetime.strptime("11:30", "%H:%M").time()
-            mid_end_time = datetime.datetime.strptime("13:01", "%H:%M").time()
-            end_time = datetime.datetime.strptime("14:55", "%H:%M").time()
-            is_trade_time = start_time <= cur_time <= mid_start_time or mid_end_time <= cur_time <= end_time
-            # 挂隔夜单买入
-            action_name = ''
-            current_price = utils.get_latest_price(stock_code, is_download=True)
-            order_id = -1
-            sell_price = -1
-            if gy_time <= cur_time or is_trade_time:
-                ## 买入委托
-                action_name = "buy"
-                # 查询账户余额
-                acc_info = xt_trader.query_stock_asset(acc)
-                cash = acc_info.cash
-                has_stock_list = xt_trader.query_stock_positions(acc)
-                #print("[DEBUG]dragon_v1 has_stock_list=", has_stock_list)
-                exists_volume = 0
-                for stock in has_stock_list:
-                    # print('[DEBUG]dragon_v1 action=', action_name, current_price, stock.volume, stock.stock_code, stock_code)
-                    if stock.stock_code != stock_code:
-                        continue
-                    exists_volume = stock.volume
-                ## 当前是否有委托单
-                exists_wt = 0
-                wt_infos = xt_trader.query_stock_orders(acc, True)
-                for wt_info in wt_infos:
-                    # print(wt_info.stock_code, wt_info.order_volume, wt_info.price)
-                    if wt_info.stock_code != stock_code:
-                        continue
-                    exists_wt = 1
-                ## 满足以下条件则买入
-                ##   账户余额足够买入：账户余额> 股票价格*100
-                ##   当前委托单中不存在此股
-                ## 均衡仓位:
-                ##   若股价<5.0,则最多允许买入400；
-                ##   若8.0>=股价>5.0最多允许买入300；
-                ##   若10.0>=股价>8.0,最多允许买入200;
-                ##   若股价>10.0,最多允许买入100；
-                if current_price is not None:
-                    if cash >= current_price * 100 and exists_wt == 0   \
-                        and (  (0 < current_price <= 5.0 and exists_volume < 400)
-                             or (5.0 < current_price <= 8.0 and exists_volume < 300)
-                             or (8.0 < current_price <= 10.0 and exists_volume < 200)
-                             or (10.0 < current_price and exists_volume < 100)
-                        ):
-                        order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_BUY, 100,
-                                                         xtconstant.FIX_PRICE, current_price)
-            elif cur_time == jj_time:
-                ## 检查该股票的封单量是否相同连板数中最高
-                is_highest = is_highest_bid(stock_code)
-                if not is_highest:
-                    action_name = 'cancel'
-                    ## 取消买入委托的订单
-                    xt_trader.cancel_order_stock(acc, order_id)
+            current_price = utils.get_latest_price(stock_code, True)
+            # ## 集合竞价时间：检查该股票的封单量是否相同连板数中最高，若不是则取消委托。
+            # if jj_start_time <= cur_time <= jj_end_time:
+            #     ## 检查该股票的封单量是否相同连板数中最高
+            #     is_highest = is_highest_bid(stock_code)
+            #     if not is_highest:
+            #         action_name = 'cancel'
+            #         ## 取消买入委托的订单
+            #         xt_trader.cancel_order_stock(acc, order_id)
 
-            ## 实时监测股价走势
-            if is_trade_time:
-                # 检查当前时间是否在 9:30 到 15:00 之间
-                #1，每分钟监测股价走势，若股价 < 前一日收盘价则卖出；
-                #2，每分钟监测股价走势，若股价 > 前一日收盘价，计算(股价 - 前一日收盘价) / 前一日收盘价 > 5 % 则持有观察，若 < 5 % 则以当前价格卖出。
+            if stock_code in has_stock_list:
+                print("[DEBUG]has_stock_code=", stock_code)
+                continue
 
-                yesterday_close_price = utils.get_yesterday_close_price(stock_code)
-                print("[DEBUG]dragon_v1 sell yesterday_close_price=", yesterday_close_price)
-                if ( current_price - yesterday_close_price ) / yesterday_close_price < 0.02:
-                    action_name = "sell"
-                    # print(action_name, current_price)
-                    # 查询持仓市值
-                    acc_info = xt_trader.query_stock_asset(acc)
-                    marketValue = acc_info.m_dMarketValue
-                    # 卖出
-                    if current_price is not None:
-                        if marketValue > 0:
-                            # 为了避免无法出逃，这里
-                            sell_price = round(current_price - current_price * 0.01, 2)
-                            order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_SELL, 100,
-                                                             xtconstant.FIX_PRICE, sell_price)
-            ret = dict()
-            ret['code'] = stock_code
-            ret['price'] = current_price
-            ret['action'] = action_name
-            ret['sell_price'] = sell_price
-            ret['order_id'] = order_id
-            acc_info = xt_trader.query_stock_asset(acc)
-            total_asset = acc_info.total_asset
-            ret['total_asset'] = total_asset
-            ret_list.append(ret)
-        return {"msg":ret_list}
+            ## 当前是否有委托单
+            exists_wt = 0
+            wt_infos = xt_trader.query_stock_orders(acc, True)
+            for wt_info in wt_infos:
+                # print(wt_info.stock_code, wt_info.order_volume, wt_info.price)
+                if wt_info.stock_code != stock_code:
+                    continue
+                exists_wt = 1
+            ## 满足以下条件则买入
+            ##   账户余额足够买入：账户余额> 股票价格*100
+            ##   当前委托单中不存在此股
+            ## 均衡仓位:
+            ##   若股价<5.0,则最多允许买入400；
+            ##   若8.0>=股价>5.0最多允许买入300；
+            ##   若10.0>=股价>8.0,最多允许买入200;
+            ##   若股价>10.0,最多允许买入100；
+            if current_price is not None:
+                # print("2222222222222222222222", current_price, exists_wt)
+                if exists_wt == 1:
+                    continue
+                buy_volume = 0
+                if 0 < current_price <= 5.0:
+                    buy_volume = 400
+                elif 5.0 < current_price <= 8.0:
+                    buy_volume = 300
+                elif 8.0 < current_price <= 10.0:
+                    buy_volume = 200
+                elif 10.0 < current_price:
+                    buy_volume = 100
+                if buy_volume == 0:
+                    continue
+                if cash >= current_price * buy_volume:
+                    order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_BUY, buy_volume,
+                                                     xtconstant.FIX_PRICE, current_price)
 
-
+                    ret = dict()
+                    ret['code'] = stock_code
+                    ret['price'] = current_price
+                    ret['action'] = 'buy'
+                    ret['volume'] = buy_volume
+                    ret['order_id'] = order_id
+                    buy_list.append(ret)
+        ret_list = buy_list + sell_list
+        return json.dumps({"msg":ret_list})
 
 def is_highest_bid(self, stock_code):
     """检查该股票的封单量是否是相同连板数中最高"""
