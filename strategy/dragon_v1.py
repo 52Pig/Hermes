@@ -215,9 +215,9 @@ class Dragon_V1(BaseStrategy):
                     buy_volume = 100
                 if buy_volume == 0:
                     continue
-                ## 开盘价比昨日收盘价低于2%则不再买入
+                ## 开盘价比昨日收盘价低于4%则不再买入
                 last_1d_close_price = utils.get_close_price(stock_code, last_n=1)
-                if ( current_price - last_1d_close_price ) / last_1d_close_price < 0.02:
+                if ( current_price - last_1d_close_price ) / last_1d_close_price < 0.04:
                     continue
                 if cash >= current_price * buy_volume:
                     order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_BUY, buy_volume,
