@@ -50,6 +50,8 @@ class Dragon_V1(BaseStrategy):
             #if '300615' in stock_code:
             #print('[DEBUG]instrument_detail=',instrument_detail)
             stock_name = ''
+            if instrument_detail is None:
+                continue
             if instrument_detail is not None:
                 stock_name = instrument_detail.get("InstrumentName", "")
                 if "ST" in stock_name:
@@ -135,8 +137,18 @@ class Dragon_V1(BaseStrategy):
 
         ## 查看是否持仓，若持仓则监控股价是否低于预期，若低于预期则卖出，否则一直持有
         ## 若没有持仓，则监控股价，选择买入
-        # 記錄賣出日志
+        # 记录卖出日志
         sell_list = list()
+
+        # 查询账户委托
+        ## 当前是否有委托单,避免重复报废单
+        stock_wt_map = dict()
+        wt_infos = xt_trader.query_stock_orders(acc, True)
+        for wt_info in wt_infos:
+            # print(wt_info.stock_code, wt_info.order_volume, wt_info.price)
+            if wt_info.stock_code is not None:
+                stock_wt_map[wt_info.stock_code] = 1
+
         # 查询持仓股票
         has_stock_obj = xt_trader.query_stock_positions(acc)
         has_stock_list = list()
@@ -145,7 +157,7 @@ class Dragon_V1(BaseStrategy):
             # print('成本=open_price=', has_stock.open_price)
             has_volume = has_stock.volume
             has_stock_code = has_stock.stock_code
-            if has_stock_code == '000560.SZ':
+            if stock_wt_map.get(has_stock_code, 0) == 1 or has_stock_code == '000560.SZ':
                 continue
             has_stock_list.append(has_stock_code)
             last_1d_close_price = utils.get_close_price(has_stock_code, last_n=1)
@@ -154,6 +166,8 @@ class Dragon_V1(BaseStrategy):
             if has_volume > 0 and (last_price - last_1d_close_price) / last_1d_close_price < 0.02:
                 # 为了避免无法出逃
                 sell_price = round(last_price - last_price * 0.01, 2)
+                if sell_price < round(last_1d_close_price - last_1d_close_price*0.1, 2):
+                    sell_price = round(last_1d_close_price - last_1d_close_price*0.1, 2)
                 order_id = xt_trader.order_stock(acc, has_stock_code, xtconstant.STOCK_SELL, has_volume,
                                                  xtconstant.FIX_PRICE, sell_price)
                 sell = dict()
@@ -184,14 +198,6 @@ class Dragon_V1(BaseStrategy):
                 print("[DEBUG]has_stock_code=", stock_code)
                 continue
 
-            ## 当前是否有委托单
-            exists_wt = 0
-            wt_infos = xt_trader.query_stock_orders(acc, True)
-            for wt_info in wt_infos:
-                # print(wt_info.stock_code, wt_info.order_volume, wt_info.price)
-                if wt_info.stock_code != stock_code:
-                    continue
-                exists_wt = 1
             ## 满足以下条件则买入
             ##   账户余额足够买入：账户余额> 股票价格*100
             ##   当前委托单中不存在此股
@@ -201,8 +207,8 @@ class Dragon_V1(BaseStrategy):
             ##   若10.0>=股价>8.0,最多允许买入200;
             ##   若股价>10.0,最多允许买入100；
             if current_price is not None:
-                # print("2222222222222222222222", current_price, exists_wt)
-                if exists_wt == 1:
+                ## 当前是否有委托
+                if stock_wt_map.get(stock_code, 0) == 1:
                     continue
                 buy_volume = 0
                 if 0 < current_price <= 5.0:
