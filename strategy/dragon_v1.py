@@ -119,7 +119,7 @@ class Dragon_V1(BaseStrategy):
                 pools_list.append(content)
                 limit_5_index += 1
 
-        ## 輔助時間
+        ## 辅助时间
         cur_time = datetime.datetime.now().time()
         gy_time = datetime.datetime.strptime("22:01", "%H:%M").time()
         jj_start_time = datetime.datetime.strptime("09:15", "%H:%M").time()
@@ -157,7 +157,7 @@ class Dragon_V1(BaseStrategy):
             # print('成本=open_price=', has_stock.open_price)
             has_volume = has_stock.volume
             has_stock_code = has_stock.stock_code
-            if stock_wt_map.get(has_stock_code, 0) == 1 or has_stock_code == '000560.SZ':
+            if stock_wt_map.get(has_stock_code, 0) == 1:
                 continue
             has_stock_list.append(has_stock_code)
             last_1d_close_price = utils.get_close_price(has_stock_code, last_n=1)
