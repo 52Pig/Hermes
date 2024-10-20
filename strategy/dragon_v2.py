@@ -305,8 +305,8 @@ class Dragon_V2(BaseStrategy):
         is_jj_time = jj_start_time <= cur_time <= jj_end_time
 
         ## 不在交易时间不操作
-        # if not is_trade_time:
-        #     return json.dumps({"msg":[{"mark":"is_not_trade_time."}]})
+        if not is_trade_time:
+            return json.dumps({"msg":[{"mark":"is_not_trade_time."}]})
 
         # 已经持仓股票也需要放到订阅中
         has_stock_obj = xt_trader.query_stock_positions(acc)
