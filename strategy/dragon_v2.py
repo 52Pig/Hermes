@@ -55,7 +55,7 @@ class Dragon_V2(BaseStrategy):
         if len(his_price_list) > 5:
             his_price_list = his_price_list[:5]
         for price in his_price_list:
-            if price >= last_1d_close_price * 0.98:  # ตอำฺ2%
+            if ( price - last_1d_close_price ) / last_1d_close_price < 0.02:
                 lt_target_num += 1
         if lt_target_num == 5:
             return True
