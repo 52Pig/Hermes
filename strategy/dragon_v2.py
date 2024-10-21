@@ -71,8 +71,6 @@ class Dragon_V2(BaseStrategy):
         :param acc:
         :return:
         '''
-
-
         #### 卖出判断
         ## 查看是否持仓，若持仓则监控股价是否低于预期，若低于预期则卖出，否则一直持有
         ## 若没有持仓，则监控股价，选择买入
@@ -99,7 +97,7 @@ class Dragon_V2(BaseStrategy):
                 continue
             has_stock_list.append(has_stock_code)
             if has_stock_code not in data:
-                print(f"[ERROR]has_stock_code not in data,has_stock_code={has_stock_code}")
+                # print(f"[ERROR]has_stock_code not in data,has_stock_code={has_stock_code}")
                 continue
             last_price = round(data[has_stock_code]['lastPrice'], 2)
             last_1d_close_price = round(data[has_stock_code]['lastClose'], 2)
@@ -130,11 +128,10 @@ class Dragon_V2(BaseStrategy):
                 sell['volume'] = has_volume
                 sell_list.append(sell)
 
-        ## 买入判断
+        ## 买入委托
+        buy_list = list()
         has_stock_num = len(set(has_stock_list))
         if has_stock_num < 6:
-            ## 买入委托
-            buy_list = list()
             # 查询账户余额
             acc_info = xt_trader.query_stock_asset(acc)
             cash = acc_info.cash
@@ -191,8 +188,8 @@ class Dragon_V2(BaseStrategy):
                     ret['volume'] = buy_volume
                     ret['order_id'] = order_id
                     buy_list.append(ret)
-            ret_list = buy_list + sell_list
-            return json.dumps({"msg": ret_list})
+        ret_list = buy_list + sell_list
+        return json.dumps({"msg": ret_list})
 
     def do(self, accounts):
         print("[DEBUG]do dragon_v2 ", utils.get_current_time(), accounts)
