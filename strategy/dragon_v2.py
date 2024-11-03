@@ -30,27 +30,28 @@ from utils import utils
 class Dragon_V2(BaseStrategy):
     def __init__(self, config):
         super().__init__(config)
-        self.price_history = {}
+        self.sell_price_history = {}
+        self.buy_price_history = {}
 
     def get_buy_volume(self, current_price):
         """根据当前股价确定买入股数"""
         if 0 < current_price <= 5.0:
-            return 400
+            return 600
         elif 5.0 < current_price <= 8.0:
-            return 300
+            return 500
         elif 8.0 < current_price <= 10.0:
-            return 200
+            return 400
         elif current_price > 10.0:
-            return 100
+            return 300
         return 0
 
     def should_sell(self, stock, last_1d_close_price):
         """判断是否满足卖出条件"""
-        if stock not in self.price_history or len(self.price_history[stock]) < 5:
+        if stock not in self.sell_price_history or len(self.sell_price_history[stock]) < 5:
             return False  # 数据不足
 
         # 检查最近5次股价是否全部低于前一天收盘价的2%
-        his_price_list = self.price_history[stock]
+        his_price_list = self.sell_price_history[stock]
         lt_target_num = 0
         if len(his_price_list) > 5:
             his_price_list = his_price_list[:5]
@@ -61,6 +62,22 @@ class Dragon_V2(BaseStrategy):
             return True
         else:
             return False
+
+    def should_buy(self, stock_code, current_price, last_1d_close_price):
+        ## 开盘价比昨日收盘价低于4%则不再买入
+        if (current_price - last_1d_close_price) / last_1d_close_price < 0.04:
+            return False
+        ## 记录了最近5次的历史价格数据
+        his_price_list = self.buy_price_history[stock_code]
+        if len(his_price_list) > 5:
+            his_price_list = his_price_list[:5]
+        # 价格趋势判断：避免在下跌趋势中买入
+        if any(price > current_price for price in his_price_list):
+            return False
+        # 连续满足条件的判断，确保股票价格有上涨的连续性，避免在趋势不明时买入
+        if len([price for price in his_price_list if price < current_price]) < 3:
+            return False
+        return True
 
     def price_update_callback(self, data, xt_trader, acc, pools_list):
         '''
@@ -106,16 +123,16 @@ class Dragon_V2(BaseStrategy):
             print(f"[DEBUG]sell_before,has_volume={has_volume}, last_price={last_price}, last_1d_close_price={last_1d_close_price}, has_stock_code={has_stock_code}")
 
             # 保留最近5次的股价数据
-            if has_stock_code not in self.price_history:
-                self.price_history[has_stock_code] = list()
-            self.price_history[has_stock_code].append(last_price)
-            if len(self.price_history[has_stock_code]) > 5:
-                self.price_history[has_stock_code].pop(0)
+            if has_stock_code not in self.sell_price_history:
+                self.sell_price_history[has_stock_code] = list()
+            self.sell_price_history[has_stock_code].append(last_price)
+            if len(self.sell_price_history[has_stock_code]) > 5:
+                self.sell_price_history[has_stock_code].pop(0)
 
             # if has_volume > 0 and (last_price - last_1d_close_price) / last_1d_close_price < 0.02:
             if has_volume > 0 and self.should_sell(has_stock_code, last_1d_close_price):
-                # 为了避免无法出逃
-                sell_price = round(last_price - last_price * 0.01, 2)
+                # 为了避免无法出逃，价格笼子限制，卖出价格不能低于当前价格的98%
+                sell_price = round(last_price * 0.99, 2)
                 if sell_price < round(last_1d_close_price - last_1d_close_price * 0.1, 2):
                     sell_price = round(last_1d_close_price - last_1d_close_price * 0.1, 2)
                 order_id = xt_trader.order_stock(acc, has_stock_code, xtconstant.STOCK_SELL, has_volume,
@@ -144,6 +161,7 @@ class Dragon_V2(BaseStrategy):
                 #         action_name = 'cancel'
                 #         ## 取消买入委托的订单
                 #         xt_trader.cancel_order_stock(acc, order_id)
+                ## 已经持仓，则不再考虑买入
                 if stock_code in has_stock_list:
                     print("[DEBUG]buy has_stock_code=", stock_code)
                     continue
@@ -153,6 +171,7 @@ class Dragon_V2(BaseStrategy):
                 ## 当前价格，昨日收盘价格
                 # current_price = utils.get_latest_price(stock_code, True)
                 # last_1d_close_price = utils.get_close_price(stock_code, last_n=1)
+                ## 没有当前tick数据
                 if stock_code not in data:
                     print(f"[ERROR]buy stock_code not in data,stock_code={stock_code}")
                     continue
@@ -163,9 +182,19 @@ class Dragon_V2(BaseStrategy):
                 if current_price <= 0 or last_1d_close_price <= 0:
                     continue
 
-                ## 满足以下条件则买入
+                # 保留最近5次的股价数据
+                if stock_code not in self.buy_price_history:
+                    self.buy_price_history[stock_code] = list()
+                self.buy_price_history[stock_code].append(current_price)
+                if len(self.buy_price_history[stock_code]) > 5:
+                    self.buy_price_history[stock_code].pop(0)
+
+                ## 是否满足买入条件
                 ##   账户余额足够买入：账户余额> 股票价格*100
                 ##   当前委托单中不存在此股
+                is_buy = self.should_buy(stock_code, current_price, last_1d_close_price)
+                if not is_buy:
+                    continue
                 ## 均衡仓位:
                 ##   若股价<5.0,则最多允许买入400；
                 ##   若8.0>=股价>5.0最多允许买入300；
@@ -174,9 +203,7 @@ class Dragon_V2(BaseStrategy):
                 buy_volume = self.get_buy_volume(current_price)
                 if buy_volume is None or buy_volume == 0:
                     continue
-                ## 开盘价比昨日收盘价低于4%则不再买入
-                if (current_price - last_1d_close_price) / last_1d_close_price < 0.04:
-                    continue
+                ## 账户余额足够买入
                 if cash >= current_price * buy_volume:
                     order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_BUY, buy_volume,
                                                      xtconstant.FIX_PRICE, current_price)
