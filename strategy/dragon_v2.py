@@ -135,7 +135,7 @@ class Dragon_V2(BaseStrategy):
                 sell_price = round(last_price * 0.99, 2)
                 if sell_price < round(last_1d_close_price - last_1d_close_price * 0.1, 2):
                     sell_price = round(last_1d_close_price - last_1d_close_price * 0.1, 2)
-                order_id = xt_trader.order_stock_async(acc, has_stock_code, xtconstant.STOCK_SELL, has_volume,
+                order_id = xt_trader.order_stock(acc, has_stock_code, xtconstant.STOCK_SELL, has_volume,
                                                  xtconstant.FIX_PRICE, sell_price)
                 sell = dict()
                 sell['code'] = has_stock_code
@@ -205,7 +205,7 @@ class Dragon_V2(BaseStrategy):
                     continue
                 ## ÕË»§Óà¶î×ã¹»ÂòÈë
                 if cash >= current_price * buy_volume:
-                    order_id = xt_trader.order_stock_async(acc, stock_code, xtconstant.STOCK_BUY, buy_volume,
+                    order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_BUY, buy_volume,
                                                      xtconstant.FIX_PRICE, current_price)
 
                     ret = dict()
