@@ -4,6 +4,7 @@ import time
 import json
 import datetime
 import a_trade_calendar
+from mpmath import limit
 from xtquant import xtdata
 from xtquant import xtconstant
 from base_strategy import BaseStrategy
@@ -33,16 +34,19 @@ class Dragon_V2(BaseStrategy):
         self.sell_price_history = {}
         self.buy_price_history = {}
 
-    def get_buy_volume(self, current_price):
-        """根据当前股价确定买入股数"""
-        if 0 < current_price <= 5.0:
-            return 600
-        elif 5.0 < current_price <= 8.0:
-            return 500
-        elif 8.0 < current_price <= 10.0:
-            return 400
-        elif current_price > 10.0:
-            return 300
+    def get_buy_volume(self, current_price, limit_up_days):
+        """根据当前股价和连扳数确定买入股数"""
+        if limit_up_days < 5:
+            if 0 < current_price <= 5.0:
+                return 600
+            elif 5.0 < current_price <= 8.0:
+                return 500
+            elif 8.0 < current_price <= 10.0:
+                return 400
+            elif current_price > 10.0:
+                return 300
+        else:
+            return 100
         return 0
 
     def should_sell(self, stock, last_1d_close_price, max_price, max_price_timestamp, last_price):
@@ -212,7 +216,7 @@ class Dragon_V2(BaseStrategy):
                 ##   若8.0>=股价>5.0最多允许买入300；
                 ##   若10.0>=股价>8.0,最多允许买入200;
                 ##   若股价>10.0,最多允许买入100；
-                buy_volume = self.get_buy_volume(current_price)
+                buy_volume = self.get_buy_volume(current_price, limit_up_days)
                 if buy_volume is None or buy_volume == 0:
                     continue
                 ## 账户余额足够买入
