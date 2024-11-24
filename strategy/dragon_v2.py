@@ -45,12 +45,19 @@ class Dragon_V2(BaseStrategy):
             return 300
         return 0
 
-    def should_sell(self, stock, last_1d_close_price):
+    def should_sell(self, stock, last_1d_close_price, max_price, max_price_timestamp, last_price):
         """判断是否满足卖出条件"""
+        # 卖出情况1：若当天max_price>0.095后超过5分钟股价不再>0.095则卖出
+        if max_price_timestamp is not None and max_price is not None:
+            limit_up_price = round(last_1d_close_price * 1.095, 2)
+            current_time = datetime.datetime.now()
+            time_diff = (current_time - max_price_timestamp).total_seconds()
+            if time_diff > 300 and max_price >= limit_up_price > last_price:
+                return True
+        # 卖出情况2：检查最近5次股价是否全部低于前一天收盘价的2%
         if stock not in self.sell_price_history or len(self.sell_price_history[stock]) < 5:
             return False  # 数据不足
 
-        # 检查最近5次股价是否全部低于前一天收盘价的2%
         his_price_list = self.sell_price_history[stock]
         lt_target_num = 0
         if len(his_price_list) > 5:
@@ -118,6 +125,11 @@ class Dragon_V2(BaseStrategy):
                 continue
             last_price = round(data[has_stock_code]['lastPrice'], 2)
             last_1d_close_price = round(data[has_stock_code]['lastClose'], 2)
+            max_price = round(data[has_stock_code]['high'], 2)
+            max_price_timestamp = None
+            # 记录最高价时间戳
+            if last_price == max_price and max_price_timestamp is None:
+                max_price_timestamp = datetime.datetime.now()
             # last_1d_close_price = utils.get_close_price(has_stock_code, last_n=1)
             # last_price = utils.get_latest_price(has_stock_code, is_download=True)
             print(f"[DEBUG]sell_before,has_volume={has_volume}, last_price={last_price}, last_1d_close_price={last_1d_close_price}, has_stock_code={has_stock_code}")
@@ -130,7 +142,7 @@ class Dragon_V2(BaseStrategy):
                 self.sell_price_history[has_stock_code].pop(0)
 
             # if has_volume > 0 and (last_price - last_1d_close_price) / last_1d_close_price < 0.02:
-            if has_volume > 0 and self.should_sell(has_stock_code, last_1d_close_price):
+            if has_volume > 0 and self.should_sell(has_stock_code, last_1d_close_price, max_price, max_price_timestamp, last_price):
                 # 为了避免无法出逃，价格笼子限制，卖出价格不能低于当前价格的98%
                 sell_price = round(last_price * 0.99, 2)
                 if sell_price < round(last_1d_close_price - last_1d_close_price * 0.1, 2):
