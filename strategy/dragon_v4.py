@@ -200,7 +200,8 @@ class Dragon_V4(BaseStrategy):
             # 查询账户余额
             acc_info = xt_trader.query_stock_asset(acc)
             cash = acc_info.cash
-            for stock_code, limit_up_days, yesterday_volume in pools_list:
+            for stock_code, limit_up_days, yesterday_volume, bidVol, askVol, bidPrice, askPrice \
+                    in pools_list:
                 # ## 集合竞价时间：检查该股票的封单量是否相同连板数中最高，若不是则取消委托。
                 # if jj_start_time <= cur_time <= jj_end_time:
                 #     ## 检查该股票的封单量是否相同连板数中最高
