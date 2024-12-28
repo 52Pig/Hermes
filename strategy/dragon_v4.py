@@ -48,6 +48,7 @@ class Dragon_V4(BaseStrategy):
             return None
         # 从文件名中提取日期部分，并找到最新的文件
         latest_file = max(files, key=lambda x: x.split('.')[-1])  # 按日期部分比较文件名
+        print(f"[DEBUG]INIT:latest_file={latest_file}")
         return latest_file
 
     def load_stock_pools(self, pools_file):
@@ -99,16 +100,20 @@ class Dragon_V4(BaseStrategy):
         if len(his_price_list) > 5:
             his_price_list = his_price_list[:5]
         for price in his_price_list:
-            if ( price - last_1d_close_price ) / last_1d_close_price < 0.02:
+            if ( price - last_1d_close_price ) / last_1d_close_price < 0.04:
                 lt_target_num += 1
         if lt_target_num == 5:
             return True
         else:
             return False
 
-    def should_buy(self, stock_code, current_price, last_1d_close_price):
+    def should_buy(self, stock_code, current_price, last_1d_close_price, limit_up_days):
         ## 开盘价比昨日收盘价低于4%则不再买入
-        if (current_price - last_1d_close_price) / last_1d_close_price < 0.04:
+        if limit_up_days == 1 and (current_price - last_1d_close_price) / last_1d_close_price < 0.083:
+            return False
+        elif limit_up_days == 2 and (current_price - last_1d_close_price) / last_1d_close_price < 0.066:
+            return False
+        elif (current_price - last_1d_close_price) / last_1d_close_price < 0.04:
             return False
         ## 记录了最近5次的历史价格数据
         his_price_list = self.buy_price_history[stock_code]
@@ -241,7 +246,7 @@ class Dragon_V4(BaseStrategy):
                 ## 是否满足买入条件
                 ##   账户余额足够买入：账户余额> 股票价格*100
                 ##   当前委托单中不存在此股
-                is_buy = self.should_buy(stock_code, current_price, last_1d_close_price)
+                is_buy = self.should_buy(stock_code, current_price, last_1d_close_price, limit_up_days)
                 if not is_buy:
                     continue
                 ## 均衡仓位:
@@ -290,15 +295,15 @@ class Dragon_V4(BaseStrategy):
         limit_5_index = 0
         for content in sorted_stocks:
             stock_code, limit_up_days, yesterday_volume, bidVol, askVol, bidPrice, askPrice = content
-            if bidVol > 450000 and limit_up_days == 1 and limit_1_index < 4:
+            if bidVol > 10000 and askVol == 0 and limit_up_days == 1:
                 pools_list.append(content)
                 eff_stock_list.append(stock_code)
                 limit_1_index += 1
-            elif bidVol > 450000 and limit_up_days == 2 and limit_2_index < 4:
+            elif bidVol > 10000 and askVol == 0 and limit_up_days == 2:  # and limit_2_index < 4:
                 pools_list.append(content)
                 eff_stock_list.append(stock_code)
                 limit_2_index += 1
-            elif bidVol > 450000 and limit_up_days == 3 and limit_3_index < 4:
+            elif bidVol > 10000 and askVol == 0 and limit_up_days == 3:
                 pools_list.append(content)
                 eff_stock_list.append(stock_code)
                 limit_3_index += 1
@@ -306,7 +311,7 @@ class Dragon_V4(BaseStrategy):
         ## 最终有效的结果池
         if len(pools_list) == 0:
             return json.dumps({"msg":[{"mark":"pools_list is empty."}]})
-        print(f"[DEBUG]pools_list={pools_list}")
+        print(f"[DEBUG]pools_list_size={len(pools_list)};pools_list={pools_list}")
 
         ## 辅助时间
         cur_time = datetime.datetime.now().time()
