@@ -10,6 +10,8 @@ yfinance==0.2.41
 # RL库
 gym==0.26.2
 stable-baselines3==2.3.2
+gymnasium==0.29.1
+shimmy==1.3.0
 
 # 数据可视化
 matplotlib==3.3.4
@@ -17,7 +19,7 @@ seaborn==0.11.1
 
 
 # 深度学习库
-tensorflow==2.6.0
+tensorflow==2.16.1    #tensorflow==2.6.0
 torch
 protobuf==3.20.*
 # 异步编程
@@ -36,3 +38,32 @@ deap==1.4.1
 
 ## backtest 交互式图标
 plotly==5.23.0
+
+## frame v2
+redis
+aiohttp
+grpcio
+protobuf
+python-consul
+pymongo
+motor
+tornado
+
+grpcio-tools
+
+tqdm
+pandas_market_calendars
+selenium
+watchdog
+xtquant
+akshare
+selenium
+watchdog
+a_trade_calendar
+# 使用正确的包名安装
+TA-Lib
+
+
+##backtrader
+xlsxwriter
+scikit-learn
