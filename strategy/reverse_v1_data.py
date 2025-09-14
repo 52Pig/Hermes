@@ -1,289 +1,124 @@
-#coding=gbk
-import sys
-sys.path.append('../')
-import json
-import random
-import datetime
-import configparser
-import a_trade_calendar
-from utils import utils
+import os
+import pandas as pd
 
-from xtquant.xttrader import XtQuantTrader
-from xtquant.xttype import StockAccount
-from xtquant import xtdata
-from xtquant import xtconstant
-'''
-ÀëÏßÃ¿ÌìÉ¸Ñ¡³ö¹ÉÆ±³Ø£¬ÓÃÓÚÏßÉÏ×ö¼ÓÔØ
-'''
+# é…ç½®æ•°æ®è·¯å¾„
+source_dir = '../dataset/source_data'
 
-class Dragon_V4_Data():
-    def __init__(self):
-        self.cur_date = '20241201'
-        # config = configparser.ConfigParser()
-        # config_path = 'conf/config.ini'
-        # config.read(config_path)
-        # mini_path = config.get("mini_path")
-        # acc_name = config.get("acc_name")
-        # session_id = int(random.randint(100000, 999999))
-        # xt_trader = XtQuantTrader(mini_path, session_id)
-        # xt_trader.start()
-        # print('acc_name', acc_name)
-        # connect_result = xt_trader.connect()
-        # acc = StockAccount(acc_name)
-        # subscribe_res = xt_trader.subscribe(acc)
-        # self.xt_trader = xt_trader
-        # self.acc = acc
-        # print(f'[DEBUG] Account initialized, connect_status={connect_result}, subscribe_status={subscribe_res}')
-        print("INIT DONE!")
+# è·å–æœ€è¿‘ä¸‰ä¸ªäº¤æ˜“æ—¥ç›®å½•
+date_dirs = [d for d in os.listdir(source_dir)
+             if os.path.isdir(os.path.join(source_dir, d)) and len(d) == 8 and d.isdigit()]
+date_dirs.sort(reverse=True)
+recent_dates = date_dirs[:3]
+if len(recent_dates) < 3:
+    raise ValueError("éœ€è¦è‡³å°‘ä¸‰ä¸ªäº¤æ˜“æ—¥æ•°æ®")
 
-    def do(self, out_file):
-        prev_trade_date = get_yesterday_date()
-        print(f"[DEBUG]do dragon_v4_data time:{utils.get_current_time()}, prev_trade_date={prev_trade_date}")
-        target_code = '»¦ÉîA¹É'
-        # xt_trader = self.xt_trader
-        # acc = self.acc
-        # ²éÑ¯»¦ÉîËùÓĞ¹ÉÆ±
-        index_stocks = xtdata.get_stock_list_in_sector(target_code)
-        ## É¸Ñ¡³öÓĞĞ§ÕÙ»Ø³Ø
-        recall_stock = list()
-        floatVol_map = dict()
-        for stock_code in index_stocks:
-            if not stock_code.endswith(".SH") and not stock_code.endswith(".SZ"):
-                continue
-            ## ÅÅ³ıSTµÄ¹ÉÆ±
-            instrument_detail = xtdata.get_instrument_detail(stock_code)
-            #if '300615' in stock_code:
-            #print('[DEBUG]instrument_detail=',instrument_detail)
-            stock_name = ''
-            if instrument_detail is None:
-                continue
-            if instrument_detail is not None:
-                stock_name = instrument_detail.get("InstrumentName", "")
-                if "ST" in stock_name:
-                    # print("[DEBUG]filter_ST=", stock_code, stock_name)
-                    continue
-            # ÅÅ³ı´´Òµ°å
-            if stock_code.startswith("3"):
-                # print("[DEBUG]filter_chuangyeban=", stock_code, stock_name)
-                continue
-            ## ÊÇ·ñÍ£ÅÆ
-            ins_status = instrument_detail.get("InstrumentStatus",0)
-            if ins_status >= 1:
-                print("[DEBUG]=instrumentStatus", ins_status, stock_code, stock_name)
-                continue
-            ## ²éÑ¯Á÷Í¨Á¿
-            floatVol = instrument_detail.get("FloatVolume", 0)
-            floatVol_map[stock_code] = floatVol
-            recall_stock.append((stock_code, stock_name))
-        #print(len(recall_stock), recall_stock)
+recent_dates_sorted = sorted(recent_dates)  # æ—¥æœŸå‡åºæ’åˆ—
+print(f"recent_dates_sorted={recent_dates_sorted}")
 
-        ## ¹É¼Û¼Û¸ñÉ¸Ñ¡
-        # xtdata.download_history_data(stock_code, '1m', '20240601')
-        slist = [code for code,name in recall_stock]
-        print("download day start! recall_stock_size=", len(slist))
-        xtdata.download_history_data2(slist, period='1d', start_time='20240901')
-        print("download day finish!")
+# å­˜å‚¨è‚¡ç¥¨æ•°æ®ç»“æ„
+stocks_data = {}
 
-        eff_stock_list = list()
-        for stock_code, stock_name in recall_stock:
-            latest_price = utils.get_close_price(stock_code, last_n=1)
-            if latest_price is None:
-                print("latest_price=", latest_price, stock_code)
-                continue
-            if latest_price < 2.0 or latest_price > 40.0:
-                # print("[DEBUG]filter latest price", stock_code, stock_name)
-                continue
-            eff_stock_list.append(stock_code)
+for date in recent_dates:
+    date_path = os.path.join(source_dir, date)
+    csv_files = [f for f in os.listdir(date_path) if f.endswith('.csv')]
+    csv_files.sort(key=lambda x: x.split('_')[1])  # æŒ‰æ—¶é—´æ’åº
 
-        # ¼ÆËã×î½üN¸ö½»Ò×ÈÕÁ¬°åµÄÌìÊı
-        N = 10
-        last_n = utils.get_past_trade_date(N)
-        #print(f'[DEBUG]last_n={last_n} ;eff_stock_list={len(eff_stock_list)};eff_stock_list={eff_stock_list}')
-        pre_ztgp_stocks = get_ztgp_days(eff_stock_list, last_n)
-        print(f'[DEBUG]pre_ztgp_stocks={pre_ztgp_stocks}')
-        sorted_stocks = filter_and_sort_stocks(pre_ztgp_stocks)
-        print(f"[DEBUG]sorted_stocks={sorted_stocks}")
-        if len(sorted_stocks) == 0:
-            return json.dumps({"msg":[{"mark":"sorted_stocks is empty."}]})
+    for csv_file in csv_files:
+        # è·å–æ–‡ä»¶ä¸­çš„æ—¶é—´
+        time_str = csv_file.split('_')[1].split('.')[0]  # æ ¼å¼ï¼šHH-MM
+        hour, minute = map(int, time_str.split('-'))
 
-        bid_ask_pools = get_daily_last_tick_bid_ask_volume(sorted_stocks, prev_trade_date)
-        print(f'bid_ask_pools={bid_ask_pools}')
-        if len(bid_ask_pools) == 0:
-            print('bid_ask_pools is empty.')
-            return json.dumps({"msg": [{"mark": "bid_ask_pools is empty."}]})
-
-        fw_file = open(out_file, 'w')
-        for stock_code, limit_up_days, yesterday_volume, bidVol, askVol, bidPrice, askPrice \
-                in bid_ask_pools:
-            floatVol = floatVol_map.get(stock_code, 1)
-            degree = bidVol * 100 / floatVol
-            row_line = '\t'.join((stock_code, str(limit_up_days), str(yesterday_volume), str(bidVol), str(askVol), str(bidPrice), str(askPrice), str(degree)))
-            fw_file.write(row_line + '\n')
-
-
-def is_highest_bid(self, stock_code):
-    """¼ì²é¸Ã¹ÉÆ±µÄ·âµ¥Á¿ÊÇ·ñÊÇÏàÍ¬Á¬°åÊıÖĞ×î¸ß"""
-    # »ñÈ¡¸Ã¹ÉÆ±µÄÁ¬°åÊı
-    limit_up_days = self.calculate_limit_up_days(stock_code)
-
-    # »ñÈ¡ÏàÍ¬Á¬°åÊıµÄËùÓĞ¹ÉÆ±¼°Æä·âµ¥Á¿
-    same_limit_up_stocks = self.get_same_limit_up_stocks(limit_up_days)
-
-    if not same_limit_up_stocks:
-        return False  # Ã»ÓĞÕÒµ½ÏàÍ¬Á¬°åÊıµÄ¹ÉÆ±
-
-    # »ñÈ¡¸Ã¹ÉÆ±µÄ·âµ¥Á¿
-    current_bid_volume = self.get_current_bid_volume(stock_code)
-
-    # ¼ì²é·âµ¥Á¿ÊÇ·ñÎª×î¸ß
-    is_highest = all(current_bid_volume >= volume for _, volume in same_limit_up_stocks)
-    return is_highest
-
-
-def get_yesterday_date():
-    """ »ñÈ¡´óAÇ°Ò»¸ö½»Ò×ÈÕµÄÈÕÆÚ """
-    today = datetime.datetime.now().strftime("%Y-%m-%d")
-    # print(today)
-    previous_trade_date = a_trade_calendar.get_pre_trade_date(today).replace('-', '')
-    # print(previous_trade_date)
-    #return (datetime.datetime.now() - datetime.timedelta(days=1)).strftime('%Y%m%d')
-    return previous_trade_date
-
-
-def get_daily_last_tick_bid_ask_volume(sorted_stocks, end_date):
-    # ÏÂÔØtick¼¶±ğÊı¾İ
-    res_list = list()
-    all_size = len(sorted_stocks)
-    ind = 0
-    for scode, limit_up_days, yesterday_volume in sorted_stocks:
-        ind += 1
-        is_suc = xtdata.download_history_data(scode, 'tick', start_time=end_date)
-        print(f"download {ind}={scode} tick status={is_suc}, all_size={all_size}")
-        data = xtdata.get_market_data_ex(
-            stock_list=[scode],
-            period='tick',
-            start_time=end_date,
-            # start_time = '20240901'
-        )
-        d = data[scode].tail(1).to_dict()
-        bidVol = list(d['bidVol'].values())[0][0]
-        askVol = list(d['askVol'].values())[0][0]
-        bidPrice = list(d['bidPrice'].values())[0][0]
-        askPrice = list(d['askPrice'].values())[0][0]
-        # print(scode, bidVol, askVol, bidPrice, askPrice)
-        res_list.append([scode, limit_up_days, yesterday_volume, bidVol, askVol, bidPrice, askPrice])
-        # if ind >= 3:
-        #     break
-    return res_list
-
-def filter_and_sort_stocks(ztgp_stocks):
-    """ÅÅ³ı1ÌìÒÔÏÂºÍ5ÌìÒÔÉÏÕÇÍ£µÄ¹ÉÆ±£¬²¢°´µ±ÈÕ³É½»Á¿ÅÅĞò"""
-    filtered_stocks = []
-
-    for stock_code, limit_up_days in ztgp_stocks:
-        if 1 <= limit_up_days:
-            # »ñÈ¡×òÈÕµÄ³É½»Á¿Êı¾İ
-            volume_data = xtdata.get_market_data_ex(
-                stock_list=[stock_code],
-                field_list=['time', 'volume'],
-                period='1d',
-                start_time='20240601'  # ¸ù¾İĞèÒªµ÷ÕûÊ±¼ä·¶Î§
-            )
-
-            # ´¦Àí·µ»ØµÄÊı¾İ
-            if stock_code not in volume_data or len(volume_data[stock_code]) < 2:
-                continue  # Êı¾İ²»×ã£¬Ìø¹ı
-
-            stock_volume_data = volume_data[stock_code]
-            yesterday_volume = stock_volume_data['volume'].iloc[-1]  # ×òÈÕ³É½»Á¿
-            filtered_stocks.append((stock_code, limit_up_days, yesterday_volume))
-
-    # °´ÕÕ×òÈÕ³É½»Á¿´Ó´óµ½Ğ¡ÅÅĞò
-    sorted_stocks = sorted(filtered_stocks, key=lambda x: int(x[2]), reverse=True)
-    return sorted_stocks
-
-def get_ztgp_days(index_stocks, last_n):
-    """»ñÈ¡×òÈÕÕÇÍ£¹ÉÆ±¼°ÆäÕÇÍ£ÌìÊı
-    Args:
-        index_stocks: ¹ÉÆ±´úÂëÁĞ±í
-        start_date: ÆğÊ¼¼ÆËãÈÕÆÚ£¬¸ñÊ½Îª'YYYYMMDD'
-    Returns:
-        ÕÇÍ£¹ÉÆ±¼°ÆäÕÇÍ£ÌìÊıµÄÁĞ±í
-    """
-    ztgp_stocks = []
-    start_date = last_n.replace('-', '')
-    # print("----start_date------", start_date)
-    for stock_code in index_stocks:
-        # data = xtdata.get_market_data_ex(
-        #     stock_list=[stock_code],
-        #     field_list=['time', 'close'],
-        #     period='1d',
-        #     start_time=start_date
-        # )
-
-        data = xtdata.get_market_data_ex(
-            stock_list=[stock_code],
-            period='1d',
-            start_time=start_date
-        )
-        # if stock_code == "600796.SH":
-        #     print(data)
-        #     # print(f'[DEBUG]all_columns={data[stock_code].columns}')
-        #     # [DEBUG]all_columns = Index(['time', 'open', 'high', 'low', 'close', 'volume', 'amount',
-        #     #                      'settelementPrice', 'openInterest', 'preClose', 'suspendFlag'],
-        #     #                     dtype='object')
-        #     for k, v in data[stock_code].to_dict().items():
-        #         print(f'[DEBUG]stock={stock_code}, k={k},v={v}')
-        #[DEBUG]stock = 603613.SH, k = time, v = {'20241129': 1732809600000, '20241202': 1733068800000}
-        # [DEBUG]stock = 603613.SH, k = open, v = {'20241129': 25.36, '20241202': 26.290000000000003}
-        # [DEBUG]stock = 603613.SH, k = high, v = {'20241129': 26.849999999999998, '20241202': 26.75}
-        # [DEBUG]stock = 603613.SH, k = low, v = {'20241129': 25.36, '20241202': 25.85}
-        # [DEBUG]stock = 603613.SH, k = close, v = {'20241129': 26.47, '20241202': 26.270000000000003}
-        # [DEBUG]stock = 603613.SH, k = volume, v = {'20241129': 205808, '20241202': 172754}
-        # [DEBUG]stock = 603613.SH, k = amount, v = {'20241129': 541740590.9999999, '20241202': 454179771.0}
-        # [DEBUG]stock = 603613.SH, k = settelementPrice, v = {'20241129': 0.0, '20241202': 0.0}
-        # [DEBUG]stock = 603613.SH, k = openInterest, v = {'20241129': 15, '20241202': 15}
-        # [DEBUG]stock = 603613.SH, k = preClose, v = {'20241129': 25.45, '20241202': 26.470000000000002}
-        # [DEBUG]stock = 603613.SH, k = suspendFlag, v = {'20241129': 0, '20241202': 0}
-
-        # ´¦Àí·µ»ØµÄÊı¾İ
-        if stock_code not in data or len(data[stock_code]) < 2:
-            ztgp_stocks.append((stock_code, 0))  # Êı¾İ²»×ã£¬·µ»Ø0ÌìÊı
+        # æ’é™¤09:15åˆ°09:30ä¹‹é—´çš„æ–‡ä»¶
+        if (hour == 9 and 15 <= minute <= 30):
             continue
 
-        stock_data = data[stock_code]
-        # »ñÈ¡Ã¿¸ö½»Ò×ÈÕµÄÕÇÍ£·ù¶ÈÏŞÖÆ
-        stock_data['limit_up'] = stock_data['preClose'] * 1.1  # Ä¬ÈÏÕÇÍ£ÏŞÖÆÎª10%
-        if stock_code.startswith('3'):  # ´´Òµ°å¹ÉÆ±£¬20% ÕÇµø·ù
-            stock_data['limit_up'] = stock_data['preClose'] * 1.2
-        elif stock_code.startswith('6') and 'ST' in stock_code:  # ST¹ÉÆ±£¬5% ÕÇµø·ù
-            stock_data['limit_up'] = stock_data['preClose'] * 1.05
+        file_path = os.path.join(date_path, csv_file)
+        df = pd.read_csv(file_path, index_col=0, dtype={'ä»£ç ':str})
 
-        # ¼ì²é×òÈÕÊÇ·ñÕÇÍ£
-        if stock_data['close'].iloc[-1] < stock_data['limit_up'].iloc[-1] - 0.01:  # ¿¼ÂÇĞ¡ÊıÎó²î
-            ztgp_stocks.append((stock_code, 0))  # ×òÌìÃ»ÓĞÕÇÍ££¬·µ»Ø0ÌìÊı
-            continue
-        # # ¼ì²é×òÈÕÊÇ·ñÕÇÍ£
-        # if (stock_data['close'].iloc[-1] - stock_data['close'].iloc[-2]) / stock_data['close'].iloc[-2] < 0.095:
-        #     ztgp_stocks.append((stock_code, 0))  # ×òÌìÃ»ÓĞÕÇÍ££¬·µ»Ø0ÌìÊı
-        #     continue
+        # è¿‡æ»¤åŒ—äº¤æ‰€è‚¡ç¥¨ï¼ˆä»£ç ä»¥8/4å¼€å¤´ï¼‰
+        # print(type(df['ä»£ç '])) # == '2492':
+            # print('------', df['ä»£ç '])
+        df['ä»£ç '] = df['ä»£ç '].astype(str)
+        df = df[~df['ä»£ç '].str.startswith(('8', '4', '92', '688'))]
+        # # å»æ‰ç§‘åˆ›æ¿
+        # df = df[~df['ä»£ç '].str.startswith('688')]
+        # # å»æ‰STå¼€å¤´
+        # df = df[(~df['ä»£ç '].str.startswith('87')) & (~df['ä»£ç '].str.startswith('83')) & (
+        #     ~df['ä»£ç '].str.startswith('92'))]
 
-        # ¼ÆËãÁ¬ĞøÕÇÍ£ÌìÊı
-        limit_up_count = 0
-        for i in range(len(stock_data) - 1, 0, -1):  # µ¹Ğò¼ì²é
-            if stock_data['close'].iloc[i] >= stock_data['limit_up'].iloc[i] - 0.01:  # Âú×ãÕÇÍ£Ìõ¼ş
-                limit_up_count += 1
+        for _, row in df.iterrows():
+            code = row['ä»£ç ']     #.astype(str)
+
+            if code == '2492':
+                print('------', df['ä»£ç '])
+            if code not in stocks_data:
+                stocks_data[code] = {}
+            if date not in stocks_data[code]:
+                stocks_data[code][date] = {
+                    'name': row['åç§°'],
+                    'open': row['ä»Šå¼€'],
+                    'high': row['æœ€é«˜'],
+                    'low': row['æœ€ä½'],
+                    'close': row['æ˜¨æ”¶'],
+                    'volume': row['æˆäº¤é‡'] if pd.notna(row['æˆäº¤é‡']) else 0
+                }
             else:
-                break  # Óöµ½Î´ÕÇÍ£½»Ò×ÈÕ£¬Í£Ö¹¼ÆÊı
+                # æ›´æ–°ä»·æ ¼ä¿¡æ¯
+                current = stocks_data[code][date]
+                current['high'] = max(current['high'], row['æœ€æ–°ä»·'])
+                current['low'] = min(current['low'], row['æœ€æ–°ä»·'])
+                current['close'] = row['æœ€æ–°ä»·']
+                if pd.notna(row['æˆäº¤é‡']):
+                    current['volume'] = row['æˆäº¤é‡']
 
-        ztgp_stocks.append((stock_code, limit_up_count))
-    return ztgp_stocks
+# ç­›é€‰ç¬¦åˆæ¡ä»¶çš„è‚¡ç¥¨
+selected_stocks = []
+for code in stocks_data:
+    stock = stocks_data[code]
 
-if __name__ == "__main__":
-    # »ñÈ¡µ±Ç°ÈÕÆÚÊ±¼äµÄ×Ö·û´®£¬¸ñÊ½Îª "Äê-ÔÂ-ÈÕ Ê±:·Ö:Ãë"
-    formatted_datetime = datetime.datetime.now().strftime("%Y%m%d")
-    out_file = '../logs/dragon_v4_data.' + formatted_datetime
-    print("ÊäÈëÎÄ¼ş£º", out_file)
-    obj = Dragon_V4_Data()
-    obj.cur_date = formatted_datetime
-    obj.do(out_file)
+    # æ£€æŸ¥æ˜¯å¦åŒ…å«å…¨éƒ¨ä¸‰æ—¥æ•°æ®
+    if not all(date in stock for date in recent_dates_sorted):
+        continue
+
+    # è·å–ä¸‰æ—¥æ”¶ç›˜ä»·ï¼ˆæŒ‰æ—¥æœŸå‡åºï¼‰
+    closes = [stock[date]['close'] for date in recent_dates_sorted]
+
+    # æ£€æŸ¥ä¸‹é™è¶‹åŠ¿
+    if not (closes[0] > closes[1] > closes[2]):
+        continue
+
+    # æ£€æŸ¥æ— ä¸Šå½±çº¿
+    valid = True
+    for date in recent_dates_sorted:
+        data = stock[date]
+        max_oc = max(data['open'], data['close'])
+        if data['high'] != max_oc:
+            valid = False
+            break
+    if not valid:
+        continue
+
+    # æ”¶é›†ç»“æœ
+    selected_stocks.append({
+        'code': code,
+        'name': stock[recent_dates_sorted[-1]]['name'],
+        'volumes': {date: stock[date]['volume'] for date in recent_dates_sorted}
+    })
+
+# è¾“å‡ºç»“æœ
+print("ç¬¦åˆæ¡ä»¶çš„è‚¡ç¥¨ï¼š")
+import json
+import datetime
+
+formatted_datetime = datetime.datetime.now().strftime("%Y%m%d")
+out_file = '../dataset/reverse_data/pools_data.' + formatted_datetime
+print("è¾“å…¥æ–‡ä»¶ï¼š", out_file)
+fw_file = open(out_file, 'w')
+for stock in selected_stocks:
+    fw_file.write(json.dumps(stock)+"\n")
+
+#     print(f"è‚¡ç¥¨ä»£ç ï¼š{stock['code']} åç§°ï¼š{stock['name']}")
+#     print("æœ€è¿‘ä¸‰æ—¥æˆäº¤é‡ï¼š")
+#     for date in recent_dates_sorted:
+#         print(f"{date}: {stock['volumes'][date]}")
+#     print("\n")

@@ -46,6 +46,7 @@ class Dragon_V4_Data():
         index_stocks = xtdata.get_stock_list_in_sector(target_code)
         ## 筛选出有效召回池
         recall_stock = list()
+        floatVol_map = dict()
         for stock_code in index_stocks:
             if not stock_code.endswith(".SH") and not stock_code.endswith(".SZ"):
                 continue
@@ -70,6 +71,9 @@ class Dragon_V4_Data():
             if ins_status >= 1:
                 print("[DEBUG]=instrumentStatus", ins_status, stock_code, stock_name)
                 continue
+            ## 查询流通量
+            floatVol = instrument_detail.get("FloatVolume", 0)
+            floatVol_map[stock_code] = floatVol
             recall_stock.append((stock_code, stock_name))
         #print(len(recall_stock), recall_stock)
 
@@ -111,7 +115,9 @@ class Dragon_V4_Data():
         fw_file = open(out_file, 'w')
         for stock_code, limit_up_days, yesterday_volume, bidVol, askVol, bidPrice, askPrice \
                 in bid_ask_pools:
-            row_line = '\t'.join((stock_code, str(limit_up_days), str(yesterday_volume), str(bidVol), str(askVol), str(bidPrice), str(askPrice)))
+            floatVol = floatVol_map.get(stock_code, 1)
+            degree = bidVol * 100 / floatVol
+            row_line = '\t'.join((stock_code, str(limit_up_days), str(yesterday_volume), str(bidVol), str(askVol), str(bidPrice), str(askPrice), str(degree)))
             fw_file.write(row_line + '\n')
 
 

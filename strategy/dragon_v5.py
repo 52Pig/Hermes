@@ -3,84 +3,154 @@ import os
 import time
 import glob
 import json
+import asyncio
 import datetime
 import a_trade_calendar
-from mpmath import limit
+import random
 from xtquant import xtdata
 from xtquant import xtconstant
 from base_strategy import BaseStrategy
 from utils import utils
 
-'''
-策略逻辑
+"""
+todo:
+1, 理想涨停量能公式：
+理想量比 = 当日volume / 前5日平均volume
 
-条件：
-1，前一个交易日涨停的沪深
-2，排除ST内容
-3，排除单价在2元以下,40元以上
-4，开盘价在x%以上内容
+量比区间	信号类型	操作建议
+<0.5	缩量板	高成功概率
+0.5-1.2	健康量	持筹待涨
+>3.0	爆量板	次日易分歧
+2, 主力资金识别
+筛选条件：
+成交额 > 5亿元（避免小盘股流动性陷阱）
+大单净流入占比 > 20%
+资金流向公式：
+主力净买额 = 超大单金额 + 大单金额
+
+3， 洗盘强度判断
+优质涨停特征：
+
+日内振幅 < 5%（秒板或一字板最佳）
+
+涨停后振幅 < 2%（筹码稳定）
+风险信号：
+if 振幅 > 15% and 涨停板数 > 3: 警惕天地板
+
+4， 筹码结构分析
+换手率区间	市场含义
+<5%	锁仓明显
+5%-15%	健康换手
+>25%	死亡换手
+动态阈值计算：
+合理换手率 = 流通股本中活跃筹码比例 × 1.5
+"""
 
 
-买入：
-1，每分钟股价在2%以上，买入概率随有效分钟数增加0.01
-2，若有大单买入，而增加
-
-出逃：
-1，一天最多允许买入一支，行情结束再买下一支？
-'''
-
-
-class Dragon_V4(BaseStrategy):
+class Dragon_V5(BaseStrategy):
     def __init__(self, config):
         super().__init__(config)
+        self.is_test = False
         self.sell_price_history = {}
         self.buy_price_history = {}
+        self.industry_num_map = dict()
         self.sorted_gpzt_pools = list()
-        # pools_file = './logs/dragon_v4_data.20241130'
-        pools_file = self.get_latest_file('./logs', 'dragon_v4_data.')
-        self.load_stock_pools(pools_file)
+
+        ## 加载连板强度指标
+        strength_file = self.get_latest_file("./logs", "v1_daily_limit_strength_data")
+        self.strenth_dict = json.load(open(strength_file))
+
+        ## 加载候选池
+        # pools_file = './logs/dragon_v5_data.20241130'
+        pools_file = self.get_latest_file('./logs', 'dragon_v5_data')
+        self.stock_dict = json.load(open(pools_file))
+
+        self.pools_list = list()
+        keys_list = list(self.stock_dict.keys())
+        random.shuffle(keys_list)
+        for kk in keys_list:
+            # print(kk)
+            idict = self.stock_dict.get(kk, {})
+            cc = idict.get("code", "")
+            is_target = idict.get("is_target", "")
+            is_up_limit_before_half_year = idict.get("is_up_limit_before_half_year", "0")
+            continuous_up_limit_days = idict.get("continuous_up_limit_days", 0)
+            if len(cc) > 0 and is_up_limit_before_half_year == "1" and len(self.pools_list)<60 and continuous_up_limit_days > 0:
+                self.pools_list.append(kk)
+        print('[dragon_v5][INIT]load pools file name:', pools_file)
+        print('[INIT]load total size:', len(keys_list), keys_list[:5])
+        print('[INIT]load target size:', len(self.pools_list), self.pools_list[:5])
+        print('[INIT]SUCCEED!')
 
     def get_latest_file(self, directory, prefix):
         # 获取目录下所有以 'prefix' 开头的文件
-        files = glob.glob(os.path.join(directory, f"{prefix}*"))
+        files = [
+            f for f in glob.glob(os.path.join(directory, f"{prefix}*"))
+            if f.endswith('.json')  # 过滤条件
+        ]
         # 如果没有找到文件，返回 None
         if not files:
             return None
+
+        # print(files)
         # 从文件名中提取日期部分，并找到最新的文件
-        latest_file = max(files, key=lambda x: x.split('.')[-1])  # 按日期部分比较文件名
-        print(f"[DEBUG]INIT:latest_file={latest_file}")
+        def extract_date(file_path):
+            # 示例文件名：reverse_moving_average_bull_track_20250303.json
+            base_name = os.path.basename(file_path)  # 获取文件名部分
+            print(base_name)
+            date_str = base_name.split('_')[-1].split('.')[0]  # 分割出 YYYYMMDD
+            return int(date_str)  # 转换为整数用于比较
+
+        # 按日期降序排序后取最新文件
+        files_sorted = sorted(files, key=extract_date, reverse=True)
+        latest_file = files_sorted[0]
+        # latest_file = max(files, key=lambda x: x.split('.')[-1])  # 按日期部分比较文件名
+        print(f"[INIT]latest_file={latest_file}")
         return latest_file
-
-    def load_stock_pools(self, pools_file):
-        for i, line in enumerate(open(pools_file)):
-            line = line.rstrip('\r\n')
-            lines = line.split('\t')
-            if len(lines) < 3:
-                continue
-            stock_code = lines[0].strip()
-            limit_up_days = int(lines[1].strip())
-            yesterday_volume = int(lines[2].strip())
-            bidVol = int(lines[3].strip())
-            askVol = int(lines[4].strip())
-            bidPrice = float(lines[5].strip())
-            askPrice = float(lines[6].strip())
-
-            self.sorted_gpzt_pools.append((stock_code, limit_up_days, yesterday_volume, bidVol, askVol, bidPrice, askPrice))
 
     def get_buy_volume(self, current_price, limit_up_days):
         """根据当前股价和连扳数确定买入股数"""
-        if limit_up_days < 5:
-            if 0 < current_price <= 5.0:
-                return 600
-            elif 5.0 < current_price <= 8.0:
-                return 500
-            elif 8.0 < current_price <= 10.0:
-                return 400
-            elif current_price > 10.0:
-                return 300
+        """
+                    根据股票价格和目标总金额，计算应购买的股票数量（按整手计算，1手=100股）
+                    :param price: 股票价格（1.0~30.0元）
+                    :param target_amount: 目标总金额（如10000元）
+                    :return: 股票数量（整百股数）
+                """
+        target_amount = 3000
+        if current_price <= 0 or target_amount <= 0:
+            return 0  # 处理非法输入
+        # 计算理想手数（可能含小数）
+        ideal_hands = target_amount / (current_price * 100)
+        # 获取候选手数（地板值和天花板值）
+        floor_hands = int(ideal_hands)
+        ceil_hands = floor_hands + 1
+
+        # 计算两种手数的实际总金额
+        amount_floor = floor_hands * current_price * 100
+        amount_ceil = ceil_hands * current_price * 100
+
+        # 比较哪个更接近目标金额（优先选择不超支的方案）
+        diff_floor = abs(target_amount - amount_floor)
+        diff_ceil = abs(target_amount - amount_ceil)
+
+        # 如果差距相等，优先选择金额较小的方案（如9000 vs 11000时选9000）
+        if diff_floor <= diff_ceil:
+            return floor_hands * 100
         else:
-            return 100
-        return 0
+            return ceil_hands * 100
+
+        # if limit_up_days < 5:
+        #     if 0 < current_price <= 5.0:
+        #         return 600
+        #     elif 5.0 < current_price <= 8.0:
+        #         return 500
+        #     elif 8.0 < current_price <= 10.0:
+        #         return 400
+        #     elif current_price > 10.0:
+        #         return 300
+        # else:
+        #     return 100
+        # return 0
 
     def should_sell(self, stock, last_1d_close_price, max_price, max_price_timestamp, last_price):
         """判断是否满足卖出条件"""
@@ -108,6 +178,14 @@ class Dragon_V4(BaseStrategy):
             return False
 
     def should_buy(self, stock_code, current_price, last_1d_close_price, limit_up_days):
+        ## 大盘连板强度太弱不开仓
+        score = self.strenth_dict.get("score", 0.0)
+        zha_rate = self.strenth_dict.get("zha_rate", 0.0)
+        all_limit_up_num = self.strenth_dict.get("all_limit_up_num", 0.0)
+        if score > 0 and zha_rate > 0 and all_limit_up_num > 0:
+            if (zha_rate > 0.59 or all_limit_up_num < 30) and score < 1.6:
+                return False
+
         ## 开盘价比昨日收盘价低于4%则不再买入
         if limit_up_days == 1 and (current_price - last_1d_close_price) / last_1d_close_price < 0.083:
             return False
@@ -127,7 +205,7 @@ class Dragon_V4(BaseStrategy):
             return False
         return True
 
-    def price_update_callback(self, data, xt_trader, acc, pools_list):
+    def price_update_callback(self, data, xt_trader, acc, pools_list, is_jj_time, is_open_time):
         '''
           1,查询仓位，若有仓位，判断是否要卖出
           2,仓位小于6支，则继续探索买入
@@ -150,6 +228,13 @@ class Dragon_V4(BaseStrategy):
             if wt_info.stock_code is not None:
                 stock_wt_map[wt_info.stock_code] = 1
 
+                code = wt_info.stock_code.split('.')[0]
+                industry = self.stock_dict.get(code, {}).get("industry", "")
+                if industry in self.industry_num_map:
+                    self.industry_num_map[industry] += 1
+                else:
+                    self.industry_num_map[industry] = 1
+
         # 查询持仓股票
         has_stock_obj = xt_trader.query_stock_positions(acc)
         has_stock_list = list()
@@ -164,6 +249,8 @@ class Dragon_V4(BaseStrategy):
             if has_stock_code not in data:
                 # print(f"[ERROR]has_stock_code not in data,has_stock_code={has_stock_code}")
                 continue
+            # print(f"wt about stock_code={data[has_stock_code]}")
+
             last_price = round(data[has_stock_code]['lastPrice'], 2)
             last_1d_close_price = round(data[has_stock_code]['lastClose'], 2)
             max_price = round(data[has_stock_code]['high'], 2)
@@ -204,31 +291,40 @@ class Dragon_V4(BaseStrategy):
         if has_stock_num < 6:
             # 查询账户余额
             acc_info = xt_trader.query_stock_asset(acc)
-            cash = acc_info.cash
-            for stock_code, limit_up_days, yesterday_volume, bidVol, askVol, bidPrice, askPrice \
-                    in pools_list:
-                # ## 集合竞价时间：检查该股票的封单量是否相同连板数中最高，若不是则取消委托。
-                # if jj_start_time <= cur_time <= jj_end_time:
-                #     ## 检查该股票的封单量是否相同连板数中最高
-                #     is_highest = is_highest_bid(stock_code)
-                #     if not is_highest:
-                #         action_name = 'cancel'
-                #         ## 取消买入委托的订单
-                #         xt_trader.cancel_order_stock(acc, order_id)
+            cash = 0
+            if acc_info is not None:
+                cash = acc_info.cash
+            else:
+                return json.dumps({"warn": [{"mark": "cash is None."}]})
+            # for stock_code, limit_up_days, yesterday_volume, bidVol, askVol, bidPrice, askPrice \
+            #         in pools_list:
+            for code in pools_list:
+                # print('====', code)
+                info_dict = self.stock_dict.get(code.split('.')[0], {})
+                stock_code = info_dict.get("code", "")
+                limit_up_days = info_dict.get("continuous_up_limit_days", 0)
+                industry = info_dict.get("industry", "")
+                # print(f'-------{code}==={limit_up_days}==={stock_code}==={info_dict}')
                 ## 已经持仓，则不再考虑买入
                 if stock_code in has_stock_list:
-                    print("[DEBUG]buy has_stock_code=", stock_code)
+                    # print("[DEBUG]buy has_stock_code=", stock_code)
                     continue
                 ## 当前是否有委托
                 if stock_wt_map.get(stock_code, 0) == 1:
                     continue
+                ## 一个行业最多持仓一支
+                if industry in self.industry_num_map:
+                    continue
+
                 ## 当前价格，昨日收盘价格
                 # current_price = utils.get_latest_price(stock_code, True)
                 # last_1d_close_price = utils.get_close_price(stock_code, last_n=1)
                 ## 没有当前tick数据
                 if stock_code not in data:
-                    print(f"[ERROR]buy stock_code not in data,stock_code={stock_code}")
+                    # print(f"[ERROR]buy stock_code not in data,stock_code={stock_code}")
                     continue
+
+                # print(f"buy about stock_code={data[stock_code]}")
                 current_price = data[stock_code]['lastPrice']
                 last_1d_close_price = data[stock_code]['lastClose']
                 if current_price is None or last_1d_close_price is None:
@@ -240,8 +336,17 @@ class Dragon_V4(BaseStrategy):
                 if stock_code not in self.buy_price_history:
                     self.buy_price_history[stock_code] = list()
                 self.buy_price_history[stock_code].append(current_price)
-                if len(self.buy_price_history[stock_code]) > 5:
+                if not is_jj_time and len(self.buy_price_history[stock_code]) > 5:
                     self.buy_price_history[stock_code].pop(0)
+                if is_jj_time:
+                    ## 竞价时间不执行买入
+                    continue
+                if is_open_time:
+                    ## 竞价弱势不买入
+                    price_list = self.buy_price_history[stock_code]
+                    is_dec = is_price_declining(price_list)
+                    if is_dec:
+                        continue
 
                 ## 是否满足买入条件
                 ##   账户余额足够买入：账户余额> 股票价格*100
@@ -272,62 +377,60 @@ class Dragon_V4(BaseStrategy):
         ret_list = buy_list + sell_list
         return json.dumps({"msg": ret_list})
 
-    def do(self, accounts):
-        print("[DEBUG]do dragon_v4 ", utils.get_current_time(), accounts)
-        target_code = '沪深A股'
-        req_dict = accounts.get("acc_1", {})
+    async def do(self, accounts):
+        print("[DEBUG]do dragon_v5 ", utils.get_current_time(), accounts)
+        req_dict = accounts.get("acc_2", {})
         xt_trader = req_dict.get("xt_trader")
         acc = req_dict.get("account")
+        is_test = req_dict.get("is_test", "0")
+        self.is_test = is_test
         # acc_name = req_dict.get("acc_name")
         ## 加载有效召回池
-        sorted_stocks = self.sorted_gpzt_pools
-        print(f"[DEBUG]sorted_stocks={sorted_stocks}")
-        if len(sorted_stocks) == 0:
-            return json.dumps({"msg":[{"mark":"sorted_stocks is empty."}]})
-
-        # 相同板数成交量最大的作为买入
-        pools_list = list()
-        eff_stock_list = list()
-        limit_1_index = 0
-        limit_2_index = 0
-        limit_3_index = 0
-        limit_4_index = 0
-        limit_5_index = 0
-        for content in sorted_stocks:
-            stock_code, limit_up_days, yesterday_volume, bidVol, askVol, bidPrice, askPrice = content
-            if bidVol > 10000 and askVol == 0 and limit_up_days == 1:
-                pools_list.append(content)
-                eff_stock_list.append(stock_code)
-                limit_1_index += 1
-            elif bidVol > 10000 and askVol == 0 and limit_up_days == 2:  # and limit_2_index < 4:
-                pools_list.append(content)
-                eff_stock_list.append(stock_code)
-                limit_2_index += 1
-            elif bidVol > 10000 and askVol == 0 and limit_up_days == 3:
-                pools_list.append(content)
-                eff_stock_list.append(stock_code)
-                limit_3_index += 1
-
-        ## 最终有效的结果池
-        if len(pools_list) == 0:
-            return json.dumps({"msg":[{"mark":"pools_list is empty."}]})
-        print(f"[DEBUG]pools_list_size={len(pools_list)};pools_list={pools_list}")
+        if len(self.pools_list) == 0:
+            return json.dumps({"warn":[{"mark":"pools_list is empty."}]})
 
         ## 辅助时间
         cur_time = datetime.datetime.now().time()
         gy_time = datetime.datetime.strptime("22:01", "%H:%M").time()
         jj_start_time = datetime.datetime.strptime("09:15", "%H:%M").time()
         jj_end_time = datetime.datetime.strptime("09:19", "%H:%M").time()
-        start_time = datetime.datetime.strptime("09:31", "%H:%M").time()
+        start_time = datetime.datetime.strptime("09:15", "%H:%M").time()
+        open_time = datetime.datetime.strptime("09:30", "%H:%M").time()
         mid_start_time = datetime.datetime.strptime("11:30", "%H:%M").time()
         mid_end_time = datetime.datetime.strptime("13:01", "%H:%M").time()
         end_time = datetime.datetime.strptime("14:55", "%H:%M").time()
         is_trade_time = start_time <= cur_time <= mid_start_time or mid_end_time <= cur_time <= end_time
         is_jj_time = jj_start_time <= cur_time <= jj_end_time
-
+        is_open_time = cur_time >= open_time
         ## 不在交易时间不操作
-        if not is_trade_time:
-            return json.dumps({"msg":[{"mark":"is_not_trade_time."}]})
+        if not is_trade_time and self.is_test == "0":
+            return json.dumps({"warn":[{"mark":"is_not_trade_time."}]})
+
+        # 相同板数成交量最大的作为买入
+        eff_stock_list = list()
+        limit_1_index = 0
+        limit_2_index = 0
+        for code in self.pools_list:
+            content = self.stock_dict.get(code, {})
+            # print('===========', code, content)
+            stock_code = content.get("code", "")
+            if len(stock_code) == 0:
+                continue
+            limit_up_days = content.get("continuous_up_limit_days", 0)
+            if limit_up_days == 0:
+                continue
+            if limit_up_days == 1 and limit_1_index < 2:
+                limit_1_index += 1
+                eff_stock_list.append(stock_code)
+
+            elif limit_up_days == 2 and limit_2_index < 2:
+                limit_2_index += 1
+                eff_stock_list.append(stock_code)
+
+        ## 最终有效的结果池
+        if len(eff_stock_list) == 0:
+           return json.dumps({"msg": [{"mark": "eff_stock_list is empty."}]})
+        print(f"[DEBUG]eff_stock_size={len(eff_stock_list)};pools_list={eff_stock_list}")
 
         # 已经持仓股票也需要放到订阅中
         has_stock_obj = xt_trader.query_stock_positions(acc)
@@ -340,20 +443,56 @@ class Dragon_V4(BaseStrategy):
             has_stock_code = has_stock.stock_code
             has_stock_map[has_stock_code] = has_volume
             has_stock_list.append(has_stock_code)
+
+            code = has_stock_code.split('.')[0]
+            industry = self.stock_dict.get(code, {}).get("industry", "")
+            if industry in self.industry_num_map:
+                self.industry_num_map[industry] += 1
+            else:
+                self.industry_num_map[industry] = 1
         subscribe_whole_list = list(set(has_stock_list + eff_stock_list))
         print(f"[DEBUG]subscribe_whole_list={subscribe_whole_list}")
+
         # 注册全推回调函数
         # 这里用一个空的列表来存储返回结果
         final_ret_list = []
-
+        loop = asyncio.get_event_loop()
         # 注册全推回调函数
         def callback(data):
-            ret = self.price_update_callback(data, xt_trader, acc, pools_list)
+            ret = self.price_update_callback(data, xt_trader, acc, eff_stock_list, is_jj_time, is_open_time)
             if ret is not None:
                 final_ret_list.extend(ret)
 
         xtdata.subscribe_whole_quote(subscribe_whole_list, callback=callback)
-        xtdata.run()
+
+        # 非阻塞运行xtdata.run()，例如在后台线程中运行
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, xtdata.run)
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # # 注册全推回调函数
+        # # 这里用一个空的列表来存储返回结果
+        # final_ret_list = []
+        #
+        # # 注册全推回调函数
+        # def callback(data):
+        #     ret = self.price_update_callback(data, xt_trader, acc, eff_stock_list)
+        #     if ret is not None:
+        #         final_ret_list.extend(ret)
+        #
+        # xtdata.subscribe_whole_quote(subscribe_whole_list, callback=callback)
+        # xtdata.run()
         # 返回整合后的结果
         return json.dumps({"msg": final_ret_list})
 
@@ -376,6 +515,15 @@ def is_highest_bid(self, stock_code):
     is_highest = all(current_bid_volume >= volume for _, volume in same_limit_up_stocks)
     return is_highest
 
+def is_price_declining(prices, window=3):
+    """检查最近window个时间点是否持续下跌"""
+    if len(prices) < window:
+        return False
+    for i in range(1, window):
+        if prices[-i] >= prices[-i-1]:
+            return False
+    return True
+
 def get_yesterday_date():
     """ 获取大A前一个交易日的日期 """
     today = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -384,3 +532,6 @@ def get_yesterday_date():
     # print(previous_trade_date)
     #return (datetime.datetime.now() - datetime.timedelta(days=1)).strftime('%Y%m%d')
     return previous_trade_date
+
+if __name__ == "__main__":
+    a = Dragon_V5(config="../conf/v1.ini")

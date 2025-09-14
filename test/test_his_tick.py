@@ -5,20 +5,24 @@ slist = ['001317.SZ']
 stock_code = '001317.SZ'
 print("download tick start! recall_stock_size=", len(slist))
 
+def callback(data):
+    print(data)
 
 def download_1():
     is_suc = xtdata.download_history_data2(slist, period='tick', start_time='20240901')
-    # data = xtdata.get_market_data_ex(
-    #     stock_list=slist,
-    #     period='tick',
-    #     start_time='20240901',
-    #     # start_time = '20240901093000'
-    # )
-    data = xtdata.get_local_data(
+    # xtdata.subscribe_whole_quote(slist, callback=callback)
+    # xtdata.run()
+    data = xtdata.get_market_data_ex(
         stock_list=slist,
         period='tick',
-        start_time='20240901'
+        start_time='20240901',
+        # start_time = '20240901093000'
     )
+    # data = xtdata.get_local_data(
+    #     stock_list=slist,
+    #     period='tick',
+    #     start_time='20240901'
+    # )
     print(f'tick data={data[stock_code].columns}')
     print(f'tick data={json.dumps(data[stock_code].tail(2).to_dict())}')
 
