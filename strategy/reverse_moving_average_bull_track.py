@@ -1,148 +1,289 @@
-#coding=gbk
+# -*- coding: utf-8 -*-
+
 import os
-import time
+import asyncio
 import glob
 import json
+import random
 import datetime
+import logging
 import a_trade_calendar
-from mpmath import limit
-from xtquant import xtdata
 from xtquant import xtconstant
+from xtquant import xtdata
+import threading
+from queue import Queue
+
 from base_strategy import BaseStrategy
 from utils import utils
+current_date = datetime.datetime.now().strftime('%Y-%m-%d')
+pp = "F:/tools/dataset/logs"  # ä¿®æ­£è¿™ä¸ªè·¯å¾„çš„æ‹¼å†™é”™è¯¯
 
-'''
-²ßÂÔÂß¼­
+# æ£€æŸ¥å¹¶åˆ›å»ºæ—¥å¿—ç›®å½•
+if not os.path.exists(pp):
+    os.makedirs(pp, exist_ok=True)
 
-Ìõ¼ş£º
-1£¬Ç°Ò»¸ö½»Ò×ÈÕÕÇÍ£µÄ»¦Éî
-2£¬ÅÅ³ıSTÄÚÈİ
-3£¬ÅÅ³ıµ¥¼ÛÔÚ2ÔªÒÔÏÂ,40ÔªÒÔÉÏ
-4£¬¿ªÅÌ¼ÛÔÚx%ÒÔÉÏÄÚÈİ
+log_file = os.path.join(pp, f"rmabt_v1_{current_date}.log")
+print(log_file)
+
+from queue import Queue as LogQueue
+
+# # å…¨å±€æ—¥å¿—é˜Ÿåˆ—
+# log_queue = LogQueue()
+# queue_handler = logging.handlers.QueueHandler(log_queue)
+# queue_listener = logging.handlers.QueueListener(
+#     log_queue,
+#     logging.FileHandler(log_file, mode='a', encoding='utf-8'),
+#     logging.StreamHandler()
+# )
+# queue_listener.start()
+#
+# # é…ç½®æ—¥å¿—è®°å½•å™¨
+# rma_logger = logging.getLogger("ReverseMABULL")
+# rma_logger.setLevel(logging.INFO)
+# rma_logger.addHandler(queue_handler)  # æ›¿ä»£åŸæœ‰FileHandler
 
 
-ÂòÈë£º
-1£¬Ã¿·ÖÖÓ¹É¼ÛÔÚ2%ÒÔÉÏ£¬ÂòÈë¸ÅÂÊËæÓĞĞ§·ÖÖÓÊıÔö¼Ó0.01
-2£¬ÈôÓĞ´óµ¥ÂòÈë£¬¶øÔö¼Ó
-
-³öÌÓ£º
-1£¬Ò»Ìì×î¶àÔÊĞíÂòÈëÒ»Ö§£¬ĞĞÇé½áÊøÔÙÂòÏÂÒ»Ö§£¿
-'''
 
 
-class Dragon_V4(BaseStrategy):
+
+
+
+
+
+
+
+
+
+# åˆ›å»ºä¸€ä¸ªæ–°çš„æ—¥å¿—è®°å½•å™¨
+rma_logger = logging.getLogger("ReverseMABULL")
+rma_logger.setLevel(logging.INFO)
+
+# æ£€æŸ¥æ˜¯å¦å·²å­˜åœ¨FileHandlerï¼Œé¿å…é‡å¤æ·»åŠ 
+file_handler_exists = any(
+    isinstance(handler, logging.FileHandler) and handler.baseFilename == os.path.abspath(log_file)
+    for handler in rma_logger.handlers
+)
+
+if not file_handler_exists:
+    # åˆ›å»ºæ–‡ä»¶å¤„ç†å™¨ï¼Œä½¿ç”¨è¿½åŠ æ¨¡å¼('a')
+    file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
+    formatter = logging.Formatter('%(asctime)s %(message)s')
+    file_handler.setFormatter(formatter)
+    rma_logger.addHandler(file_handler)
+
+# ç¤ºä¾‹æ—¥å¿—è®°å½•
+rma_logger.info("æœåŠ¡å¯åŠ¨ï¼Œæ—¥å¿—å·²é…ç½®ä¸ºè¿½åŠ æ¨¡å¼ã€‚")
+
+class ReverseMABULL(BaseStrategy):
     def __init__(self, config):
         super().__init__(config)
+        # self.data_queue = Queue()  # ç”¨äºæ¥æ”¶è¡Œæƒ…æ•°æ®çš„é˜Ÿåˆ—
+        # self.is_running = True  # æ§åˆ¶çº¿ç¨‹è¿è¡ŒçŠ¶æ€
+
+        self.is_test = "0"
+        ## è®°å½•ä¹°å…¥å§”æ‰˜ï¼Œå·²ç»å§”æ‰˜è®¢å•ä¸å†è¿›è¡Œé‡å¤ä¸‹å•
+        self.wt_dict = dict()
         self.sell_price_history = {}
         self.buy_price_history = {}
         self.sorted_gpzt_pools = list()
-        # pools_file = './logs/dragon_v4_data.20241130'
-        pools_file = self.get_latest_file('./logs', 'dragon_v4_data.')
-        self.load_stock_pools(pools_file)
+        pools_file = self.get_latest_file(pp, 'reverse_moving_average_bull_track_')
+        self.stock_dict = json.load(open(pools_file))
+        self.pools_list = list()
+        keys_list = list(self.stock_dict.keys())
+        random.shuffle(keys_list)
+        # for kk in keys_list:
+        for kk, vv in self.stock_dict.items():
+            # print(kk)
+            idict = self.stock_dict.get(kk, {})
+            cc = idict.get("code", "")
+            is_target = idict.get("is_target", "")
+            if len(cc) > 0 and len(self.pools_list)<60 and is_target == "1":
+                self.pools_list.append(cc)
+        print('[INIT]load pools file name:', pools_file)
+        print('[INIT]load total size:', len(keys_list), keys_list[:5])
+        print('[INIT]load target size:', len(self.pools_list), self.pools_list[:5])
+        print('[INIT]SUCCEED!')
 
     def get_latest_file(self, directory, prefix):
-        # »ñÈ¡Ä¿Â¼ÏÂËùÓĞÒÔ 'prefix' ¿ªÍ·µÄÎÄ¼ş
-        files = glob.glob(os.path.join(directory, f"{prefix}*"))
-        # Èç¹ûÃ»ÓĞÕÒµ½ÎÄ¼ş£¬·µ»Ø None
+        # è·å–ç›®å½•ä¸‹æ‰€æœ‰ä»¥ 'prefix' å¼€å¤´çš„æ–‡ä»¶
+        files = [
+            f for f in glob.glob(os.path.join(directory, f"{prefix}*"))
+            if f.endswith('.json')  # è¿‡æ»¤æ¡ä»¶
+        ]
+        # å¦‚æœæ²¡æœ‰æ‰¾åˆ°æ–‡ä»¶ï¼Œè¿”å› None
         if not files:
             return None
-        # ´ÓÎÄ¼şÃûÖĞÌáÈ¡ÈÕÆÚ²¿·Ö£¬²¢ÕÒµ½×îĞÂµÄÎÄ¼ş
-        latest_file = max(files, key=lambda x: x.split('.')[-1])  # °´ÈÕÆÚ²¿·Ö±È½ÏÎÄ¼şÃû
-        print(f"[DEBUG]INIT:latest_file={latest_file}")
+        # print(files)
+        # ä»æ–‡ä»¶åä¸­æå–æ—¥æœŸéƒ¨åˆ†ï¼Œå¹¶æ‰¾åˆ°æœ€æ–°çš„æ–‡ä»¶
+        def extract_date(file_path):
+            # ç¤ºä¾‹æ–‡ä»¶åï¼šreverse_moving_average_bull_track_20250303.json
+            base_name = os.path.basename(file_path)  # è·å–æ–‡ä»¶åéƒ¨åˆ†
+            date_str = base_name.split('_')[-1].split('.')[0]  # åˆ†å‰²å‡º YYYYMMDD
+            return int(date_str)  # è½¬æ¢ä¸ºæ•´æ•°ç”¨äºæ¯”è¾ƒ
+
+        # æŒ‰æ—¥æœŸé™åºæ’åºåå–æœ€æ–°æ–‡ä»¶
+        files_sorted = sorted(files, key=extract_date, reverse=True)
+        latest_file = files_sorted[0]
+        # latest_file = max(files, key=lambda x: x.split('.')[-1])  # æŒ‰æ—¥æœŸéƒ¨åˆ†æ¯”è¾ƒæ–‡ä»¶å
+        print(f"[INIT]latest_file={latest_file}")
         return latest_file
 
-    def load_stock_pools(self, pools_file):
-        for i, line in enumerate(open(pools_file)):
-            line = line.rstrip('\r\n')
-            lines = line.split('\t')
-            if len(lines) < 3:
-                continue
-            stock_code = lines[0].strip()
-            limit_up_days = int(lines[1].strip())
-            yesterday_volume = int(lines[2].strip())
-            bidVol = int(lines[3].strip())
-            askVol = int(lines[4].strip())
-            bidPrice = float(lines[5].strip())
-            askPrice = float(lines[6].strip())
+    def get_buy_volume(self, price):
+        """
+            æ ¹æ®è‚¡ç¥¨ä»·æ ¼å’Œç›®æ ‡æ€»é‡‘é¢ï¼Œè®¡ç®—åº”è´­ä¹°çš„è‚¡ç¥¨æ•°é‡ï¼ˆæŒ‰æ•´æ‰‹è®¡ç®—ï¼Œ1æ‰‹=100è‚¡ï¼‰
+            :param price: è‚¡ç¥¨ä»·æ ¼ï¼ˆ1.0~30.0å…ƒï¼‰
+            :param target_amount: ç›®æ ‡æ€»é‡‘é¢ï¼ˆå¦‚10000å…ƒï¼‰
+            :return: è‚¡ç¥¨æ•°é‡ï¼ˆæ•´ç™¾è‚¡æ•°ï¼‰
+        """
+        target_amount = 10000
+        if price <= 0 or target_amount <= 0:
+            return 0  # å¤„ç†éæ³•è¾“å…¥
 
-            self.sorted_gpzt_pools.append((stock_code, limit_up_days, yesterday_volume, bidVol, askVol, bidPrice, askPrice))
+        # è®¡ç®—ç†æƒ³æ‰‹æ•°ï¼ˆå¯èƒ½å«å°æ•°ï¼‰
+        ideal_hands = target_amount / (price * 100)
+        # è·å–å€™é€‰æ‰‹æ•°ï¼ˆåœ°æ¿å€¼å’Œå¤©èŠ±æ¿å€¼ï¼‰
+        floor_hands = int(ideal_hands)
+        ceil_hands = floor_hands + 1
 
-    def get_buy_volume(self, current_price, limit_up_days):
-        """¸ù¾İµ±Ç°¹É¼ÛºÍÁ¬°âÊıÈ·¶¨ÂòÈë¹ÉÊı"""
-        if limit_up_days < 5:
-            if 0 < current_price <= 5.0:
-                return 600
-            elif 5.0 < current_price <= 8.0:
-                return 500
-            elif 8.0 < current_price <= 10.0:
-                return 400
-            elif current_price > 10.0:
-                return 300
+        # è®¡ç®—ä¸¤ç§æ‰‹æ•°çš„å®é™…æ€»é‡‘é¢
+        amount_floor = floor_hands * price * 100
+        amount_ceil = ceil_hands * price * 100
+
+        # æ¯”è¾ƒå“ªä¸ªæ›´æ¥è¿‘ç›®æ ‡é‡‘é¢ï¼ˆä¼˜å…ˆé€‰æ‹©ä¸è¶…æ”¯çš„æ–¹æ¡ˆï¼‰
+        diff_floor = abs(target_amount - amount_floor)
+        diff_ceil = abs(target_amount - amount_ceil)
+
+        # å¦‚æœå·®è·ç›¸ç­‰ï¼Œä¼˜å…ˆé€‰æ‹©é‡‘é¢è¾ƒå°çš„æ–¹æ¡ˆï¼ˆå¦‚9000 vs 11000æ—¶é€‰9000ï¼‰
+        if diff_floor <= diff_ceil:
+            return floor_hands * 100
         else:
-            return 100
-        return 0
+            return ceil_hands * 100
 
-    def should_sell(self, stock, last_1d_close_price, max_price, max_price_timestamp, last_price):
-        """ÅĞ¶ÏÊÇ·ñÂú×ãÂô³öÌõ¼ş"""
-        # Âô³öÇé¿ö1£ºÈôµ±Ììmax_price>0.095ºó³¬¹ı5·ÖÖÓ¹É¼Û²»ÔÙ>0.095ÔòÂô³ö
+        # if 0 < current_price <= 2.0:
+        #     return 10000
+        # elif 2.0 < current_price <= 5.0:
+        #     return 2000
+        # elif 5.0 < current_price <= 8.0:
+        #     return 1500
+        # elif 8.0 < current_price <= 10.0:
+        #     return 1000
+        # elif 10.0 < current_price <= 15.0:
+        #     return 100
+        # else:
+        #     return 100
+
+    def should_sell(self, stock, last_1d_close_price, max_price, max_price_timestamp, last_price, open_price):
+        """åˆ¤æ–­æ˜¯å¦æ»¡è¶³å–å‡ºæ¡ä»¶"""
+        ## å–å‡ºæƒ…å†µ1: æ­¢æŸä½ 1 ä¸ªç‚¹
+        #o_price = round(open_price * 1.01, 2)
+        #if last_price <= o_price:
+        #    return True, 1
+        ## å–å‡ºæƒ…å†µ2: ma5/10å¹³è¡Œæˆ–å‘ä¸‹
+        info_dict = self.stock_dict.get(stock, {})
+        last_close_str = info_dict.get("last_close", "")
+        last_close_list = last_close_str.split(",")
+        if "" != last_close_str and len(last_close_list) > 32:
+            # åˆ©ç”¨æœ€æ–°ä»·æ ¼è®¡ç®—å½“å¤©çš„MA5ï¼ŒMA10ï¼ŒMA20ï¼ŒMA30
+            lc_list = [float(ele) for ele in last_close_list]
+            lc_list.append(last_price)
+            len_lc_list = len(lc_list)
+            ma5 = sum(lc_list[len_lc_list - 5:]) / 5.0
+            prev_ma5 = info_dict.get("MA5", 1000)
+            # ma5æ— ä¸Šå‡è¶‹åŠ¿
+            increase_ma5 = (ma5 <= prev_ma5)
+            if increase_ma5:
+                return True, 6
+            ma10 = sum(lc_list[len_lc_list - 10:]) / 10.0
+            prev_ma10 = info_dict.get("MA10", 1000)
+            # ma10æ— ä¸Šå‡è¶‹åŠ¿
+            increase_ma10 = (ma10 <= prev_ma10)
+            if increase_ma10:
+                return True, 7
+
+        # å–å‡ºæƒ…å†µ3ï¼šè‹¥å½“å¤©max_price>0.095åè¶…è¿‡5åˆ†é’Ÿè‚¡ä»·ä¸å†>0.095åˆ™å–å‡º
         if max_price_timestamp is not None and max_price is not None:
             limit_up_price = round(last_1d_close_price * 1.095, 2)
             current_time = datetime.datetime.now()
             time_diff = (current_time - max_price_timestamp).total_seconds()
             if time_diff > 300 and max_price >= limit_up_price > last_price:
-                return True
-        # Âô³öÇé¿ö2£º¼ì²é×î½ü5´Î¹É¼ÛÊÇ·ñÈ«²¿µÍÓÚÇ°Ò»ÌìÊÕÅÌ¼ÛµÄ2%
-        if stock not in self.sell_price_history or len(self.sell_price_history[stock]) < 5:
-            return False  # Êı¾İ²»×ã
+                return True, 2
+        # å–å‡ºæƒ…å†µ4ï¼šæ£€æŸ¥æœ€è¿‘3æ¬¡è‚¡ä»·æ˜¯å¦å…¨éƒ¨ä½äºå‰ä¸€å¤©æ”¶ç›˜ä»·çš„1.4%
+        if stock not in self.sell_price_history or len(self.sell_price_history[stock]) < 3:
+            return False, 3  # æ•°æ®ä¸è¶³
 
         his_price_list = self.sell_price_history[stock]
         lt_target_num = 0
-        if len(his_price_list) > 5:
-            his_price_list = his_price_list[:5]
+        if len(his_price_list) > 3:
+            his_price_list = his_price_list[:3]
         for price in his_price_list:
-            if ( price - last_1d_close_price ) / last_1d_close_price < 0.04:
+            if ( price - last_1d_close_price ) / last_1d_close_price < 0.014:
                 lt_target_num += 1
-        if lt_target_num == 5:
-            return True
+        if lt_target_num == 3:
+            return True, 4
         else:
-            return False
+            return False, 5
 
-    def should_buy(self, stock_code, current_price, last_1d_close_price, limit_up_days):
-        ## ¿ªÅÌ¼Û±È×òÈÕÊÕÅÌ¼ÛµÍÓÚ4%Ôò²»ÔÙÂòÈë
-        if limit_up_days == 1 and (current_price - last_1d_close_price) / last_1d_close_price < 0.083:
-            return False
-        elif limit_up_days == 2 and (current_price - last_1d_close_price) / last_1d_close_price < 0.066:
-            return False
-        elif (current_price - last_1d_close_price) / last_1d_close_price < 0.04:
-            return False
-        ## ¼ÇÂ¼ÁË×î½ü5´ÎµÄÀúÊ·¼Û¸ñÊı¾İ
-        his_price_list = self.buy_price_history[stock_code]
-        if len(his_price_list) > 5:
-            his_price_list = his_price_list[:5]
-        # ¼Û¸ñÇ÷ÊÆÅĞ¶Ï£º±ÜÃâÔÚÏÂµøÇ÷ÊÆÖĞÂòÈë
-        if any(price > current_price for price in his_price_list):
-            return False
-        # Á¬ĞøÂú×ãÌõ¼şµÄÅĞ¶Ï£¬È·±£¹ÉÆ±¼Û¸ñÓĞÉÏÕÇµÄÁ¬ĞøĞÔ£¬±ÜÃâÔÚÇ÷ÊÆ²»Ã÷Ê±ÂòÈë
-        if len([price for price in his_price_list if price < current_price]) < 3:
-            return False
-        return True
+    def should_buy(self, stock_code, current_price, last_1d_close_price, info_dict, is_high_fx, is_noon_time):
+        ## è®°å½•äº†æœ€è¿‘5æ¬¡çš„å†å²ä»·æ ¼æ•°æ®
+        # his_price_list = self.buy_price_history[stock_code]
+        # if len(his_price_list) > 5:
+        #     his_price_list = his_price_list[:5]
+        # # ä»·æ ¼è¶‹åŠ¿åˆ¤æ–­ï¼šé¿å…åœ¨ä¸‹è·Œè¶‹åŠ¿ä¸­ä¹°å…¥
+        # if any(price > current_price for price in his_price_list):
+        #     return False
+        # # è¿ç»­æ»¡è¶³æ¡ä»¶çš„åˆ¤æ–­ï¼Œç¡®ä¿è‚¡ç¥¨ä»·æ ¼æœ‰ä¸Šæ¶¨çš„è¿ç»­æ€§ï¼Œé¿å…åœ¨è¶‹åŠ¿ä¸æ˜æ—¶ä¹°å…¥
+        # if len([price for price in his_price_list if price < current_price]) < 3:
+        #     return False
+        ## ä¸‹åˆå†è¿›è¡Œä¹°å…¥æ“ä½œ
+        if not is_noon_time:
+            return False, 204
+        ## 10:25ä¹‹å‰ä¸è¿½é«˜ï¼Œéè¿½é«˜çš„ç­–ç•¥ï¼Œè¿‡é«˜æ—¶ä¸å†ä¹°å…¥ï¼Œè¯±å¤šæ¯”è¾ƒå¤š
+        # if is_high_fx and ( current_price - last_1d_close_price ) / last_1d_close_price > 0.05:
+        #     return False, 200
+        # å¤šå¤´æ’åˆ—&ä¸Šå‡è¶‹åŠ¿
+        last_close_str = info_dict.get("last_close", "")
+        last_close_list = last_close_str.split(",")
+        if "" == last_close_str or len(last_close_list) < 32:
+            return False, 201
+        else:
+            # åˆ©ç”¨æœ€æ–°ä»·æ ¼è®¡ç®—å½“å¤©çš„MA5ï¼ŒMA10ï¼ŒMA20ï¼ŒMA30
+            lc_list = [float(ele) for ele in last_close_list]
+            lc_list.append(current_price)
+            len_lc_list = len(lc_list)
+            ma5 = sum(lc_list[len_lc_list - 5:]) / 5.0
+            ma10 = sum(lc_list[len_lc_list - 10:]) / 10.0
+            ma20 = sum(lc_list[len_lc_list - 20:]) / 20.0
+            ma30 = sum(lc_list[len_lc_list - 30:]) / 30.0
+            prev_ma5 = info_dict.get("MA5", 1000)
+            prev_ma10 = info_dict.get("MA10", 1000)
+            prev_ma20 = info_dict.get("MA20", 1000)
+            prev_ma30 = info_dict.get("MA30", 1000)
+            # ä¸Šå‡è¶‹åŠ¿
+            increase_status = (ma5 > prev_ma5) and (ma10 > prev_ma10) and (ma20 > prev_ma20) and (ma30 > prev_ma30)
+            # å¤šå¤´æ’åˆ—
+            bull_track_status = (ma5 > ma10) and (ma10 > ma20) and (ma20 > ma30)
+            if increase_status & bull_track_status:
+                return True, 202
+            else:
+                return False, 203
 
-    def price_update_callback(self, data, xt_trader, acc, pools_list):
+
+    def price_update_callback(self, data, xt_trader, acc, is_high_fx, is_noon_time):
         '''
-          1,²éÑ¯²ÖÎ»£¬ÈôÓĞ²ÖÎ»£¬ÅĞ¶ÏÊÇ·ñÒªÂô³ö
-          2,²ÖÎ»Ğ¡ÓÚ6Ö§£¬Ôò¼ÌĞøÌ½Ë÷ÂòÈë
-        :param data: »Øµ÷Êı¾İ
+          1,æŸ¥è¯¢ä»“ä½ï¼Œè‹¥æœ‰ä»“ä½ï¼Œåˆ¤æ–­æ˜¯å¦è¦å–å‡º
+          2,ä»“ä½å°äº6æ”¯ï¼Œåˆ™ç»§ç»­æ¢ç´¢ä¹°å…¥
+        :param data: å›è°ƒæ•°æ®
         :param xt_trader:
         :param acc:
         :return:
         '''
-        #### Âô³öÅĞ¶Ï
-        ## ²é¿´ÊÇ·ñ³Ö²Ö£¬Èô³Ö²ÖÔò¼à¿Ø¹É¼ÛÊÇ·ñµÍÓÚÔ¤ÆÚ£¬ÈôµÍÓÚÔ¤ÆÚÔòÂô³ö£¬·ñÔòÒ»Ö±³ÖÓĞ
-        ## ÈôÃ»ÓĞ³Ö²Ö£¬Ôò¼à¿Ø¹É¼Û£¬Ñ¡ÔñÂòÈë
-        # ¼ÇÂ¼Âô³öÈÕÖ¾
+        #### å–å‡ºåˆ¤æ–­
+        ## æŸ¥çœ‹æ˜¯å¦æŒä»“ï¼Œè‹¥æŒä»“åˆ™ç›‘æ§è‚¡ä»·æ˜¯å¦ä½äºé¢„æœŸï¼Œè‹¥ä½äºé¢„æœŸåˆ™å–å‡ºï¼Œå¦åˆ™ä¸€ç›´æŒæœ‰
+        ## è‹¥æ²¡æœ‰æŒä»“ï¼Œåˆ™ç›‘æ§è‚¡ä»·ï¼Œé€‰æ‹©ä¹°å…¥
+        # è®°å½•å–å‡ºæ—¥å¿—
         sell_list = list()
-        # ²éÑ¯ÕË»§Î¯ÍĞ
-        ## µ±Ç°ÊÇ·ñÓĞÎ¯ÍĞµ¥,±ÜÃâÖØ¸´±¨·Ïµ¥
+        # æŸ¥è¯¢è´¦æˆ·å§”æ‰˜
+        ## å½“å‰æ˜¯å¦æœ‰å§”æ‰˜å•,é¿å…é‡å¤æŠ¥åºŸå•
         stock_wt_map = dict()
         wt_infos = xt_trader.query_stock_orders(acc, True)
         for wt_info in wt_infos:
@@ -150,12 +291,13 @@ class Dragon_V4(BaseStrategy):
             if wt_info.stock_code is not None:
                 stock_wt_map[wt_info.stock_code] = 1
 
-        # ²éÑ¯³Ö²Ö¹ÉÆ±
+        # æŸ¥è¯¢æŒä»“è‚¡ç¥¨
         has_stock_obj = xt_trader.query_stock_positions(acc)
         has_stock_list = list()
         for has_stock in has_stock_obj:
-            # print('³Ö²Ö×ÜÊĞÖµ=market_value=', has_stock.market_value)
-            # print('³É±¾=open_price=', has_stock.open_price)
+            # print('æŒä»“æ€»å¸‚å€¼=market_value=', has_stock.market_value)
+            # print('æˆæœ¬=open_price=', has_stock.open_price)
+            open_price = has_stock.open_price
             has_volume = has_stock.volume
             has_stock_code = has_stock.stock_code
             if stock_wt_map.get(has_stock_code, 0) == 1:
@@ -168,67 +310,72 @@ class Dragon_V4(BaseStrategy):
             last_1d_close_price = round(data[has_stock_code]['lastClose'], 2)
             max_price = round(data[has_stock_code]['high'], 2)
             max_price_timestamp = None
-            # ¼ÇÂ¼×î¸ß¼ÛÊ±¼ä´Á
+            # è®°å½•æœ€é«˜ä»·æ—¶é—´æˆ³
             if last_price == max_price and max_price_timestamp is None:
                 max_price_timestamp = datetime.datetime.now()
             # last_1d_close_price = utils.get_close_price(has_stock_code, last_n=1)
             # last_price = utils.get_latest_price(has_stock_code, is_download=True)
-            print(f"[DEBUG]sell_before,has_volume={has_volume}, last_price={last_price}, last_1d_close_price={last_1d_close_price}, has_stock_code={has_stock_code}")
+            # print(f"[DEBUG]sell_before,has_volume={has_volume}, last_price={last_price}, last_1d_close_price={last_1d_close_price}, has_stock_code={has_stock_code}")
 
-            # ±£Áô×î½ü5´ÎµÄ¹É¼ÛÊı¾İ
+            # ä¿ç•™æœ€è¿‘5æ¬¡çš„è‚¡ä»·æ•°æ®
             if has_stock_code not in self.sell_price_history:
                 self.sell_price_history[has_stock_code] = list()
             self.sell_price_history[has_stock_code].append(last_price)
             if len(self.sell_price_history[has_stock_code]) > 5:
                 self.sell_price_history[has_stock_code].pop(0)
 
-            # if has_volume > 0 and (last_price - last_1d_close_price) / last_1d_close_price < 0.02:
-            if has_volume > 0 and self.should_sell(has_stock_code, last_1d_close_price, max_price, max_price_timestamp, last_price):
-                # ÎªÁË±ÜÃâÎŞ·¨³öÌÓ£¬¼Û¸ñÁı×ÓÏŞÖÆ£¬Âô³ö¼Û¸ñ²»ÄÜµÍÓÚµ±Ç°¼Û¸ñµÄ98%
+            is_sell, sell_id = self.should_sell(has_stock_code, last_1d_close_price, max_price, max_price_timestamp, last_price,
+                             open_price)
+            if has_volume > 0 and is_sell:
+                # ä¸ºäº†é¿å…æ— æ³•å‡ºé€ƒï¼Œä»·æ ¼ç¬¼å­é™åˆ¶ï¼Œå–å‡ºä»·æ ¼ä¸èƒ½ä½äºå½“å‰ä»·æ ¼çš„98%
                 sell_price = round(last_price * 0.99, 2)
                 if sell_price < round(last_1d_close_price - last_1d_close_price * 0.1, 2):
                     sell_price = round(last_1d_close_price - last_1d_close_price * 0.1, 2)
-                order_id = xt_trader.order_stock(acc, has_stock_code, xtconstant.STOCK_SELL, has_volume,
-                                                 xtconstant.FIX_PRICE, sell_price)
+                order_id = -1
+                if "1" != self.is_test:
+                    order_id = xt_trader.order_stock(acc, has_stock_code, xtconstant.STOCK_SELL, has_volume,
+                                                xtconstant.FIX_PRICE, sell_price)
                 sell = dict()
                 sell['code'] = has_stock_code
                 sell['price'] = sell_price
                 sell['action'] = 'sell'
                 sell['order_id'] = order_id
                 sell['volume'] = has_volume
-                sell_list.append(sell)
+                sell["sell_id"] = sell_id
+                rma_logger.info("s:" + json.dumps(sell, ensure_ascii=False))
 
-        ## ÂòÈëÎ¯ÍĞ
+                # sell_list.append(sell)
+
+        ## ä¹°å…¥å§”æ‰˜
         buy_list = list()
         has_stock_num = len(set(has_stock_list))
-        if has_stock_num < 6:
-            # ²éÑ¯ÕË»§Óà¶î
+        if has_stock_num < 200:
+            # æŸ¥è¯¢è´¦æˆ·ä½™é¢
             acc_info = xt_trader.query_stock_asset(acc)
             cash = acc_info.cash
-            for stock_code, limit_up_days, yesterday_volume, bidVol, askVol, bidPrice, askPrice \
-                    in pools_list:
-                # ## ¼¯ºÏ¾º¼ÛÊ±¼ä£º¼ì²é¸Ã¹ÉÆ±µÄ·âµ¥Á¿ÊÇ·ñÏàÍ¬Á¬°åÊıÖĞ×î¸ß£¬Èô²»ÊÇÔòÈ¡ÏûÎ¯ÍĞ¡£
-                # if jj_start_time <= cur_time <= jj_end_time:
-                #     ## ¼ì²é¸Ã¹ÉÆ±µÄ·âµ¥Á¿ÊÇ·ñÏàÍ¬Á¬°åÊıÖĞ×î¸ß
-                #     is_highest = is_highest_bid(stock_code)
-                #     if not is_highest:
-                #         action_name = 'cancel'
-                #         ## È¡ÏûÂòÈëÎ¯ÍĞµÄ¶©µ¥
-                #         xt_trader.cancel_order_stock(acc, order_id)
-                ## ÒÑ¾­³Ö²Ö£¬Ôò²»ÔÙ¿¼ÂÇÂòÈë
+
+            for code in self.pools_list:
+
+                info_dict = self.stock_dict.get(code.split('.')[0], {})
+                stock_code = info_dict.get("code", "")
+                # print(f'-------{code}==={stock_code}==={info_dict}')
+                ## å·²ç»æŒä»“ï¼Œåˆ™ä¸å†è€ƒè™‘ä¹°å…¥
                 if stock_code in has_stock_list:
-                    print("[DEBUG]buy has_stock_code=", stock_code)
+                    # print("[DEBUG]buy has_stock_code=", stock_code)
                     continue
-                ## µ±Ç°ÊÇ·ñÓĞÎ¯ÍĞ
+                ## å½“å‰æ˜¯å¦æœ‰å§”æ‰˜
                 if stock_wt_map.get(stock_code, 0) == 1:
                     continue
-                ## µ±Ç°¼Û¸ñ£¬×òÈÕÊÕÅÌ¼Û¸ñ
+                ## å½“å‰ä»·æ ¼ï¼Œæ˜¨æ—¥æ”¶ç›˜ä»·æ ¼
                 # current_price = utils.get_latest_price(stock_code, True)
                 # last_1d_close_price = utils.get_close_price(stock_code, last_n=1)
-                ## Ã»ÓĞµ±Ç°tickÊı¾İ
+                ## æ²¡æœ‰å½“å‰tickæ•°æ®
                 if stock_code not in data:
-                    print(f"[ERROR]buy stock_code not in data,stock_code={stock_code}")
+                    # print(f"[WARN]buy stock_code not in data,stock_code={stock_code},data_size={len(data.keys())};data={json.dumps(data)}")
                     continue
+                # print(
+                #     f"[WARN]buy stock_code not in data,stock_code={stock_code},data_size={len(data.keys())};data={json.dumps(data)}")
+
                 current_price = data[stock_code]['lastPrice']
                 last_1d_close_price = data[stock_code]['lastClose']
                 if current_price is None or last_1d_close_price is None:
@@ -236,151 +383,157 @@ class Dragon_V4(BaseStrategy):
                 if current_price <= 0 or last_1d_close_price <= 0:
                     continue
 
-                # ±£Áô×î½ü5´ÎµÄ¹É¼ÛÊı¾İ
+                # ä¿ç•™æœ€è¿‘5æ¬¡çš„è‚¡ä»·æ•°æ®
                 if stock_code not in self.buy_price_history:
                     self.buy_price_history[stock_code] = list()
                 self.buy_price_history[stock_code].append(current_price)
                 if len(self.buy_price_history[stock_code]) > 5:
                     self.buy_price_history[stock_code].pop(0)
 
-                ## ÊÇ·ñÂú×ãÂòÈëÌõ¼ş
-                ##   ÕË»§Óà¶î×ã¹»ÂòÈë£ºÕË»§Óà¶î> ¹ÉÆ±¼Û¸ñ*100
-                ##   µ±Ç°Î¯ÍĞµ¥ÖĞ²»´æÔÚ´Ë¹É
-                is_buy = self.should_buy(stock_code, current_price, last_1d_close_price, limit_up_days)
+                ## æ˜¯å¦æ»¡è¶³ä¹°å…¥æ¡ä»¶
+                ##   è´¦æˆ·ä½™é¢è¶³å¤Ÿä¹°å…¥ï¼šè´¦æˆ·ä½™é¢> è‚¡ç¥¨ä»·æ ¼*100
+                ##   å½“å‰å§”æ‰˜å•ä¸­ä¸å­˜åœ¨æ­¤è‚¡
+                is_buy, buy_id = self.should_buy(stock_code, current_price, last_1d_close_price, info_dict, is_high_fx, is_noon_time)
                 if not is_buy:
                     continue
-                ## ¾ùºâ²ÖÎ»:
-                ##   Èô¹É¼Û<5.0,Ôò×î¶àÔÊĞíÂòÈë400£»
-                ##   Èô8.0>=¹É¼Û>5.0×î¶àÔÊĞíÂòÈë300£»
-                ##   Èô10.0>=¹É¼Û>8.0,×î¶àÔÊĞíÂòÈë200;
-                ##   Èô¹É¼Û>10.0,×î¶àÔÊĞíÂòÈë100£»
-                buy_volume = self.get_buy_volume(current_price, limit_up_days)
+                ## å‡è¡¡ä»“ä½:
+                ##   è‹¥è‚¡ä»·<5.0,åˆ™æœ€å¤šå…è®¸ä¹°å…¥400ï¼›
+                ##   è‹¥8.0>=è‚¡ä»·>5.0æœ€å¤šå…è®¸ä¹°å…¥300ï¼›
+                ##   è‹¥10.0>=è‚¡ä»·>8.0,æœ€å¤šå…è®¸ä¹°å…¥200;
+                ##   è‹¥è‚¡ä»·>10.0,æœ€å¤šå…è®¸ä¹°å…¥100ï¼›
+                buy_volume = self.get_buy_volume(current_price)
                 if buy_volume is None or buy_volume == 0:
                     continue
-                ## ÕË»§Óà¶î×ã¹»ÂòÈë
+                ## è´¦æˆ·ä½™é¢è¶³å¤Ÿä¹°å…¥
                 if cash >= current_price * buy_volume:
-                    order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_BUY, buy_volume,
-                                                     xtconstant.FIX_PRICE, current_price)
-
+                    ## é¿å…ä¸€å¤©åŒä¸€åªå…¥å¤šæ¬¡
+                    if self.wt_dict.get(stock_code, 0) == 1:
+                        continue
+                    order_id = -1
+                    if "1" != self.is_test:
+                        order_id = xt_trader.order_stock(acc, stock_code, xtconstant.STOCK_BUY, buy_volume,
+                                                    xtconstant.FIX_PRICE, current_price, strategy_name="rma")
+                    self.wt_dict[stock_code] = 1
                     ret = dict()
                     ret['code'] = stock_code
                     ret['price'] = current_price
                     ret['action'] = 'buy'
                     ret['volume'] = buy_volume
                     ret['order_id'] = order_id
+                    ret['buy_id'] = buy_id
+                    rma_logger.info("b:"+json.dumps(ret, ensure_ascii=False))
                     buy_list.append(ret)
         ret_list = buy_list + sell_list
         return json.dumps({"msg": ret_list})
 
-    def do(self, accounts):
-        print("[DEBUG]do dragon_v4 ", utils.get_current_time(), accounts)
-        target_code = '»¦ÉîA¹É'
+    async def do(self, accounts):
+        print("[DEBUG]do reverse_moving_average_bull_track ", utils.get_current_time(), accounts)
+        target_code = 'æ²ªæ·±Aè‚¡'
         req_dict = accounts.get("acc_1", {})
         xt_trader = req_dict.get("xt_trader")
         acc = req_dict.get("account")
+        is_test = req_dict.get("is_test", "0")
+        self.is_test = is_test
         # acc_name = req_dict.get("acc_name")
-        ## ¼ÓÔØÓĞĞ§ÕÙ»Ø³Ø
-        sorted_stocks = self.sorted_gpzt_pools
-        print(f"[DEBUG]sorted_stocks={sorted_stocks}")
-        if len(sorted_stocks) == 0:
-            return json.dumps({"msg":[{"mark":"sorted_stocks is empty."}]})
 
-        # ÏàÍ¬°åÊı³É½»Á¿×î´óµÄ×÷ÎªÂòÈë
-        pools_list = list()
-        eff_stock_list = list()
-        limit_1_index = 0
-        limit_2_index = 0
-        limit_3_index = 0
-        limit_4_index = 0
-        limit_5_index = 0
-        for content in sorted_stocks:
-            stock_code, limit_up_days, yesterday_volume, bidVol, askVol, bidPrice, askPrice = content
-            if bidVol > 10000 and askVol == 0 and limit_up_days == 1:
-                pools_list.append(content)
-                eff_stock_list.append(stock_code)
-                limit_1_index += 1
-            elif bidVol > 10000 and askVol == 0 and limit_up_days == 2:  # and limit_2_index < 4:
-                pools_list.append(content)
-                eff_stock_list.append(stock_code)
-                limit_2_index += 1
-            elif bidVol > 10000 and askVol == 0 and limit_up_days == 3:
-                pools_list.append(content)
-                eff_stock_list.append(stock_code)
-                limit_3_index += 1
+        ## åŠ è½½æœ‰æ•ˆå¬å›æ± 
+        if len(self.pools_list) == 0:
+            return json.dumps({"warn":[{"mark":"pools_list is empty."}]})
 
-        ## ×îÖÕÓĞĞ§µÄ½á¹û³Ø
-        if len(pools_list) == 0:
-            return json.dumps({"msg":[{"mark":"pools_list is empty."}]})
-        print(f"[DEBUG]pools_list_size={len(pools_list)};pools_list={pools_list}")
-
-        ## ¸¨ÖúÊ±¼ä
+        ## è¾…åŠ©æ—¶é—´
         cur_time = datetime.datetime.now().time()
         gy_time = datetime.datetime.strptime("22:01", "%H:%M").time()
         jj_start_time = datetime.datetime.strptime("09:15", "%H:%M").time()
         jj_end_time = datetime.datetime.strptime("09:19", "%H:%M").time()
-        start_time = datetime.datetime.strptime("09:31", "%H:%M").time()
+        start_time = datetime.datetime.strptime("09:30", "%H:%M").time()
         mid_start_time = datetime.datetime.strptime("11:30", "%H:%M").time()
         mid_end_time = datetime.datetime.strptime("13:01", "%H:%M").time()
         end_time = datetime.datetime.strptime("14:55", "%H:%M").time()
+        high_fx_time = datetime.datetime.strptime("10:25", "%H:%M").time()
+        after_noon_time = datetime.datetime.strptime("14:00", "%H:%M").time()
+        is_high_fx = cur_time <= high_fx_time
+        is_noon_time = cur_time > after_noon_time
         is_trade_time = start_time <= cur_time <= mid_start_time or mid_end_time <= cur_time <= end_time
         is_jj_time = jj_start_time <= cur_time <= jj_end_time
 
-        ## ²»ÔÚ½»Ò×Ê±¼ä²»²Ù×÷
-        if not is_trade_time:
-            return json.dumps({"msg":[{"mark":"is_not_trade_time."}]})
+        ## ä¸åœ¨äº¤æ˜“æ—¶é—´ä¸æ“ä½œ
+        if not is_trade_time and self.is_test == "0":
+           return json.dumps({"warn":[{"mark":"is_not_trade_time."}]})
 
-        # ÒÑ¾­³Ö²Ö¹ÉÆ±Ò²ĞèÒª·Åµ½¶©ÔÄÖĞ
+        # å·²ç»æŒä»“è‚¡ç¥¨ä¹Ÿéœ€è¦æ”¾åˆ°è®¢é˜…ä¸­
         has_stock_obj = xt_trader.query_stock_positions(acc)
         has_stock_list = list()
         has_stock_map = dict()
+        stock_list = self.pools_list
         for has_stock in has_stock_obj:
-            # print('³Ö²Ö×ÜÊĞÖµ=market_value=', has_stock.market_value)
-            # print('³É±¾=open_price=', has_stock.open_price)
+            # print('æŒä»“æ€»å¸‚å€¼=market_value=', has_stock.market_value)
+            # print('æˆæœ¬=open_price=', has_stock.open_price)
             has_volume = has_stock.volume
             has_stock_code = has_stock.stock_code
             has_stock_map[has_stock_code] = has_volume
             has_stock_list.append(has_stock_code)
-        subscribe_whole_list = list(set(has_stock_list + eff_stock_list))
-        print(f"[DEBUG]subscribe_whole_list={subscribe_whole_list}")
-        # ×¢²áÈ«ÍÆ»Øµ÷º¯Êı
-        # ÕâÀïÓÃÒ»¸ö¿ÕµÄÁĞ±íÀ´´æ´¢·µ»Ø½á¹û
-        final_ret_list = []
+        subscribe_whole_list = list(set(has_stock_list + stock_list))
+        print(f"[DEBUG]subscribe_whole_list={len(subscribe_whole_list)}={subscribe_whole_list}")
 
-        # ×¢²áÈ«ÍÆ»Øµ÷º¯Êı
+        # # å¯åŠ¨ç‹¬ç«‹çº¿ç¨‹è¿è¡Œ xtdata
+        # def xtdata_thread():
+        #     xtdata.run()
+        #
+        # thread = threading.Thread(target=xtdata_thread, daemon=True)
+        # thread.start()
+        #
+        # # å¼‚æ­¥å¤„ç†æ•°æ®é˜Ÿåˆ—ä¸­çš„å›è°ƒ
+        # async def process_data_queue():
+        #     while self.is_running:
+        #         if not self.data_queue.empty():
+        #             data = self.data_queue.get()
+        #             ret = self.price_update_callback(data, xt_trader, acc, is_high_fx, is_noon_time)
+        #             # å¤„ç†è¿”å›ç»“æœï¼ˆç¤ºä¾‹ï¼‰
+        #         await asyncio.sleep(0.1)  # é¿å…CPUå æ»¡
+        #
+        # # å¯åŠ¨æ•°æ®å¤„ç†ä»»åŠ¡
+        # asyncio.create_task(process_data_queue())
+        #
+        # # ç«‹å³è¿”å›ï¼Œä¸é˜»å¡åç»­interval
+        # return json.dumps({"status": "ç­–ç•¥å·²å¯åŠ¨"})
+
+        # # quit()
+        # æ³¨å†Œå…¨æ¨å›è°ƒå‡½æ•°
+        # è¿™é‡Œç”¨ä¸€ä¸ªç©ºçš„åˆ—è¡¨æ¥å­˜å‚¨è¿”å›ç»“æœ
+        final_ret_list = []
+        loop = asyncio.get_event_loop()
+        # æ³¨å†Œå…¨æ¨å›è°ƒå‡½æ•°
         def callback(data):
-            ret = self.price_update_callback(data, xt_trader, acc, pools_list)
+            ret = self.price_update_callback(data, xt_trader, acc, is_high_fx, is_noon_time)
             if ret is not None:
                 final_ret_list.extend(ret)
 
         xtdata.subscribe_whole_quote(subscribe_whole_list, callback=callback)
-        xtdata.run()
-        # ·µ»ØÕûºÏºóµÄ½á¹û
-        return json.dumps({"msg": final_ret_list})
+
+        # éé˜»å¡è¿è¡Œxtdata.run()ï¼Œä¾‹å¦‚åœ¨åå°çº¿ç¨‹ä¸­è¿è¡Œ
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, xtdata.run)
+        #
+        # # å¯åŠ¨ç­–ç•¥é€»è¾‘ä»»åŠ¡ï¼Œä¸ç­‰å¾…å…¶å®Œæˆ
+        # asyncio.create_task(run_strategy_logic())
+        # return json.dumps({"status": "ç­–ç•¥å·²å¼‚æ­¥å¯åŠ¨"})
 
 
-def is_highest_bid(self, stock_code):
-    """¼ì²é¸Ã¹ÉÆ±µÄ·âµ¥Á¿ÊÇ·ñÊÇÏàÍ¬Á¬°åÊıÖĞ×î¸ß"""
-    # »ñÈ¡¸Ã¹ÉÆ±µÄÁ¬°åÊı
-    limit_up_days = self.calculate_limit_up_days(stock_code)
 
-    # »ñÈ¡ÏàÍ¬Á¬°åÊıµÄËùÓĞ¹ÉÆ±¼°Æä·âµ¥Á¿
-    same_limit_up_stocks = self.get_same_limit_up_stocks(limit_up_days)
 
-    if not same_limit_up_stocks:
-        return False  # Ã»ÓĞÕÒµ½ÏàÍ¬Á¬°åÊıµÄ¹ÉÆ±
 
-    # »ñÈ¡¸Ã¹ÉÆ±µÄ·âµ¥Á¿
-    current_bid_volume = self.get_current_bid_volume(stock_code)
-
-    # ¼ì²é·âµ¥Á¿ÊÇ·ñÎª×î¸ß
-    is_highest = all(current_bid_volume >= volume for _, volume in same_limit_up_stocks)
-    return is_highest
+        #xtdata.run()
+        # è¿”å›æ•´åˆåçš„ç»“æœ
+        # return json.dumps({"msg": final_ret_list})
 
 def get_yesterday_date():
-    """ »ñÈ¡´óAÇ°Ò»¸ö½»Ò×ÈÕµÄÈÕÆÚ """
+    """ è·å–å¤§Aå‰ä¸€ä¸ªäº¤æ˜“æ—¥çš„æ—¥æœŸ """
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     # print(today)
     previous_trade_date = a_trade_calendar.get_pre_trade_date(today).replace('-', '')
     # print(previous_trade_date)
     #return (datetime.datetime.now() - datetime.timedelta(days=1)).strftime('%Y%m%d')
     return previous_trade_date
+
+if __name__ == "__main__":
+    a = ReverseMABULL(config="../conf/v1.ini")
