@@ -683,7 +683,7 @@ class RTRMAV3(BaseStrategy):
             ma30_rate = (ma30 - prev_ma30) / prev_ma30
             # score = ma5_rate + ma10_rate + ma20_rate + ma30_rate
             score = ma5_rate
-            print(f"[DEBUG]realtime rma industry={industry},code={code},score={score}, ma5_rate={ma5_rate}, ma10_rate={ma10_rate}, ma20_rate={ma20_rate}, ma30_rate={ma30_rate}")
+            # print(f"[DEBUG]realtime rma industry={industry},code={code},score={score}, ma5_rate={ma5_rate}, ma10_rate={ma10_rate}, ma20_rate={ma20_rate}, ma30_rate={ma30_rate}")
 
             # if score < 0.005:
             #     continue
