@@ -835,8 +835,8 @@ class MlpInferV2(BaseStrategy):
 
         ## 上午不再买入，尽量减少在场内时间
         cur_time = datetime.datetime.now().time()
-        if self.is_test != "1" and cur_time < datetime.time(14, 45):
-            return json.dumps({"msg": f"cur_time={cur_time} < 14:45, no permit buy!"})
+        if self.is_test != "1" and (cur_time < datetime.time(14, 49) or cur_time > datetime.time(14, 57)):
+            return json.dumps({"msg": f" 14:57 < cur_time={cur_time} < 14:45, no permit buy!"})
 
         #### 4. 执行买入操作
         # 买入数量
@@ -845,7 +845,7 @@ class MlpInferV2(BaseStrategy):
         for rank, (code, idict) in enumerate(result_dict.items(), 1):
             pred = idict.get('pred', 0)
             score = idict.get('pred_score', 0.0)
-            print(rank, code, pred, score)
+            # print(rank, code, pred, score)
             stock = code
             if pred != max_pred:
                 continue
