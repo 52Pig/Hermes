@@ -801,25 +801,7 @@ class MlpInferV2(BaseStrategy):
         # print(json.dumps(sorted_codes))
         # 转换为字典结构
         result_dict = {}
-        for code, (pred, pred_score) in sorted_codes:
-            result_dict[code] = {
-                "pred": pred,
-                "pred_score": pred_score
-            }
-
-        # 记录日志
-        rma_logger.info("sorted:" + json.dumps(result_dict, ensure_ascii=False))
-        # rma_logger.info("sorted:" + json.dumps(sorted_codes, ensure_ascii=False))
-
-
-        ## 上午不再买入，尽量减少在场内时间
-        cur_time = datetime.datetime.now().time()
-        if self.is_test != "1" and cur_time < datetime.time(14, 45):
-            return json.dumps({"msg": f"cur_time={cur_time} < 14:45, no permit buy!"})
-
-        #### 4. 执行买入操作
-        # 买入数量
-        target_ind = 0
+        log_dict = {}
         # 当天预估最大类别
         max_pred = max([int(pred) for code, (pred, info) in code_score_dict.items()])
         # 当天最大类别的股票数量
@@ -830,15 +812,44 @@ class MlpInferV2(BaseStrategy):
         second_pred_num = len([pred for code, (pred, info) in code_score_dict.items() if int(pred) == second_pred])
 
         ## 第1类别不足3只，则用第2类别补充？暂时仅记录日志后期做分析
-        analy_dict = {"max_pred":max_pred, "max_pred_num":max_pred_num, "second_pred":second_pred, "second_pred_num":second_pred_num}
+        analy_dict = {"max_pred": max_pred, "max_pred_num": max_pred_num, "second_pred": second_pred,
+                      "second_pred_num": second_pred_num}
         print(analy_dict)
         rma_logger.info("analy:" + json.dumps(analy_dict, ensure_ascii=False))
+        cnum = 0
+        for code, (pred, pred_score) in sorted_codes:
+            log_dict[code] = {
+                "pred": pred,
+                "pred_score": pred_score
+            }
+            if pred == max_pred:
+                cnum += 1
+                if cnum > 10:
+                    continue
+                result_dict[code] = {
+                "pred": pred,
+                "pred_score": pred_score
+            }
+        # 记录日志
+        rma_logger.info("sorted:" + json.dumps(log_dict, ensure_ascii=False))
 
-        for rank, (code, (pred, score)) in enumerate(sorted_codes, 1):
+        ## 上午不再买入，尽量减少在场内时间
+        cur_time = datetime.datetime.now().time()
+        if self.is_test != "1" and cur_time < datetime.time(14, 45):
+            return json.dumps({"msg": f"cur_time={cur_time} < 14:45, no permit buy!"})
+
+        #### 4. 执行买入操作
+        # 买入数量
+        target_ind = 0
+
+        for rank, (code, idict) in enumerate(result_dict.items(), 1):
+            pred = idict.get('pred', 0)
+            score = idict.get('pred_score', 0.0)
+            print(rank, code, pred, score)
             stock = code
-            if int(pred) != max_pred:
+            if pred != max_pred:
                 continue
-            if int(pred) < 11:
+            if pred < 11:
                 continue
             # print(stock)
             # 已经买入的数量是否达到所需补充的数量
