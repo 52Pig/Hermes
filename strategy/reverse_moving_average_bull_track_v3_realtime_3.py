@@ -461,14 +461,15 @@ class RTRMAV3(BaseStrategy):
                 max_price_timestamp = datetime.datetime.now()
             last_1d_close_price = last_close_list[-1]
 
-            ## 加仓条件
+            ## 加仓条件, 下午14:54后持仓3天内，持仓量500以内，跌幅超过一定量
             hold_days = self.get_holding_days(stock)
-            if hold_days <= 3 and has_open_price > 0 and (latest_price - has_open_price) / has_open_price < -0.02:
+            cur_time = datetime.datetime.now().time()
+            if hold_days <= 3 and has_open_price > 0 and has_volume < 500 and cur_time > datetime.time(14, 54) and (latest_price - has_open_price) / has_open_price < -0.02:
                 add_volume = 100
                 if (latest_price - has_open_price) / has_open_price < -0.08:
-                    add_volume = 500
-                elif (latest_price - has_open_price) / has_open_price < -0.06:
                     add_volume = 400
+                elif (latest_price - has_open_price) / has_open_price < -0.06:
+                    add_volume = 300
                 elif (latest_price - has_open_price) / has_open_price < -0.04:
                     add_volume = 200
                 # 加仓条件
