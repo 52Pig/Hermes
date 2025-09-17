@@ -310,7 +310,8 @@ class MlpInferV2(BaseStrategy):
             current_return = (last_price - has_open_price) / has_open_price
 
             # 持仓超过3天且收益低于6%
-            if holding_days >= 3 and current_return < 0.06:
+            # if holding_days >= 3 and current_return < 0.06:
+            if holding_days > 1 and current_return < 0.03:
                 return True, 10
 
         ## 卖出情况2: ma5/10平行或向下
@@ -613,8 +614,10 @@ class MlpInferV2(BaseStrategy):
             features['high'] = high_price
             features['low'] = low_price
             features['volume'] = volume
-            if latest_price is None or latest_price == 0:
-                continue
+            # 推理，后期改成batch
+            prediction = self.get_model_prediction(code, features)
+            pred = int(prediction['top_class'])
+            pred_score = float(prediction['top_prob'])
 
             # 保留最近5次的股价数据
             if stock not in self.sell_price_history:
@@ -628,10 +631,10 @@ class MlpInferV2(BaseStrategy):
             if latest_price <= high_price and max_price_timestamp is None:
                 max_price_timestamp = datetime.datetime.now()
 
-            # is_sell = False
-            # if pred < 11 or (latest_price - lastClose) / lastClose < -0.059:
-            #     is_sell = True
-            is_sell, sell_id = self.should_sell(stock, lastClose, high_price, max_price_timestamp, latest_price, bid_price, bid_vol, has_open_price, open_price)
+            is_sell = False
+            is_strategy_sell, sell_id = self.should_sell(stock, lastClose, high_price, max_price_timestamp, latest_price, bid_price, bid_vol, has_open_price, open_price)
+            if pred < 11 or is_strategy_sell:
+                is_sell = True
 
             if is_sell and has_volume > 0:
                 ## 上午不再卖出，尊重模型昨日的预估
