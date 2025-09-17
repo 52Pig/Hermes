@@ -310,7 +310,8 @@ class MlpInferV2(BaseStrategy):
             current_return = (last_price - has_open_price) / has_open_price
 
             # 持仓超过3天且收益低于6%
-            if holding_days >= 3 and current_return < 0.06:
+            # if holding_days >= 3 and current_return < 0.06:
+            if holding_days > 1 and current_return < 0.03:
                 return True, 10
 
         ## 卖出情况2: ma5/10平行或向下
