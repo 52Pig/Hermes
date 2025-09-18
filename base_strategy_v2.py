@@ -131,6 +131,7 @@ class BaseStrategy:
         if self.trade_record_file and os.path.exists(self.trade_record_file):
             try:
                 with open(self.trade_record_file, 'r', encoding='utf-8') as f:
+                    print(f"#4 trade_file={self.trade_record_file}")
                     self.trade_records = json.load(f)
                 print(f"Loaded trade records from {self.trade_record_file}")
             except Exception as e:
@@ -235,6 +236,7 @@ class BaseStrategy:
         """计算持仓天数"""
         if stock_code not in self.holdings or self.holdings[stock_code] <= 0:
             return 0
+        print(f"#1 holding:{stock_code},{self.trade_records}")
 
         # 查找该股票的最后一次买入记录
         buy_records = [r for r in self.trade_records
@@ -242,10 +244,11 @@ class BaseStrategy:
 
         if not buy_records:
             return 0
-
+        print(f"#2 holding:{stock_code},{buy_records}")
         # 获取最后一次买入时间
         last_buy = max(buy_records, key=lambda x: x['timestamp'])
         buy_date = datetime.strptime(last_buy['timestamp'], '%Y-%m-%d %H:%M:%S').date()
+        print(f"#3 holding:{last_buy},{buy_date}")
 
         # 计算持仓天数
         current_date = datetime.now().date()
