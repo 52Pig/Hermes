@@ -158,6 +158,12 @@ class MlpInferV2(BaseStrategy):
         self.buy_price_history = {}
         self.sorted_gpzt_pools = list()
 
+        # 添加总仓位利润监控相关属性
+        self.portfolio_peak_profit = 0.0  # 记录当天最高利润率
+        self.portfolio_peak_reached = False  # 是否已经达到过5%的峰值
+        self.portfolio_cleared_today = False  # 今天是否已经清仓
+
+
         ## 加载模型文件
         model_file = 'D:/tool/pycharm_workspace/Hermes/strategy/model_mlp_infer_v2/stock_model_finalv2.pth'
         self.predictor = StockModelPredictor(model_file)
@@ -311,7 +317,7 @@ class MlpInferV2(BaseStrategy):
 
             # 持仓超过3天且收益低于6%
             # if holding_days >= 3 and current_return < 0.06:
-            if holding_days > 1 and current_return < 0.03:
+            if holding_days >= 1 and current_return < 0.03:
                 return True, 10
 
         ## 卖出情况2: ma5/10平行或向下
@@ -497,6 +503,107 @@ class MlpInferV2(BaseStrategy):
         }
         return prediction
 
+    def check_portfolio_profit_condition(self, xt_trader, acc, account_name):
+        """
+        检查总仓位利润条件：冲高5%后回落到3%则清仓
+        返回：是否需要清仓
+        """
+        # 如果今天已经清仓过，不再检查
+        if self.portfolio_cleared_today:
+            return False
+
+        # 获取账户资产信息
+        acc_info = xt_trader.query_stock_asset(acc)
+        if not acc_info:
+            return False
+
+        # 计算当前总资产（现金 + 持仓市值）
+        total_asset = acc_info.total_asset
+
+        # 计算初始资产（如果没有记录，则使用当前资产作为初始值）
+        if not hasattr(self, 'initial_portfolio_value') or self.initial_portfolio_value == 0:
+            self.initial_portfolio_value = total_asset
+            return False
+
+        # 计算当前利润率
+        current_profit_ratio = (total_asset - self.initial_portfolio_value) / self.initial_portfolio_value
+
+        # 更新最高利润率
+        if current_profit_ratio > self.portfolio_peak_profit:
+            self.portfolio_peak_profit = current_profit_ratio
+
+        # 检查是否达到过5%的峰值
+        if self.portfolio_peak_profit >= 0.05:
+            self.portfolio_peak_reached = True
+
+        # 如果达到过5%峰值，且当前利润率回落到3%以下，则触发清仓
+        if self.portfolio_peak_reached and current_profit_ratio <= 0.03:
+            rma_logger.info(
+                f"总仓位利润冲高回落触发清仓: 峰值={self.portfolio_peak_profit:.2%}, 当前={current_profit_ratio:.2%}")
+            return True
+
+        return False
+
+    def clear_all_positions(self, xt_trader, acc, account_name, df):
+        """
+        清空所有持仓
+        """
+        # 获取当前持仓
+        has_stock_obj = xt_trader.query_stock_positions(acc)
+        has_stock_map = {}
+
+        for has_stock in has_stock_obj:
+            has_volume = has_stock.volume
+            if has_volume == 0:
+                continue
+            has_stock_code = has_stock.stock_code
+            has_open_price = has_stock.open_price
+            has_stock_map[has_stock_code] = {
+                'volume': has_volume,
+                'open_price': has_open_price
+            }
+
+        # 清空所有持仓
+        for stock, has_info in has_stock_map.items():
+            has_volume = has_info['volume']
+            has_open_price = has_info['open_price']
+
+            # 获取实时价格
+            try:
+                stock_row = df.get(stock)
+                latest_price = float(stock_row['lastPrice'])
+                lastClose = float(stock_row['lastClose'])
+            except:
+                continue
+
+            # 设置卖出价格（略低于当前价）
+            sell_price = round(latest_price * 0.99, 2)
+            if sell_price < round(lastClose - lastClose * 0.1, 2):
+                sell_price = round(lastClose - lastClose * 0.1, 2)
+
+            # 执行卖出
+            order_id = -1
+            if "1" != self.is_test:
+                order_id = xt_trader.order_stock(acc, stock, xtconstant.STOCK_SELL, has_volume,
+                                                 xtconstant.FIX_PRICE, sell_price)
+
+            # 记录交易
+            stock_name = self.stock_dict.get(stock.split('.')[0], {}).get("name", "未知")
+            self.record_trade(
+                action='sell',
+                stock_code=stock,
+                stock_name=stock_name,
+                price=sell_price,
+                volume=has_volume,
+                order_id=order_id,
+                reason="总仓位利润回落清仓",
+                account=account_name
+            )
+
+            rma_logger.info(f"清仓卖出: {stock} {stock_name}, 价格: {sell_price}, 数量: {has_volume}")
+
+        # 标记今天已清仓
+        self.portfolio_cleared_today = True
 
     async def do(self, accounts):
         print("[DEBUG]do mlp infer v2", utils.get_current_time(), accounts)
@@ -563,6 +670,12 @@ class MlpInferV2(BaseStrategy):
         df = xtdata.get_full_tick(subscribe_whole_list)
         # rma_logger.info(f"Tick Data Structure: {json.dumps(df, ensure_ascii=False)}")
         # print(json.dumps(df, indent=2))
+        # 检查总仓位利润条件（冲高5%后回落到3%则清仓）
+        if self.check_portfolio_profit_condition(xt_trader, acc, account_name):
+            self.clear_all_positions(xt_trader, acc, account_name, df)
+            return json.dumps({"msg": "总仓位利润回落清仓触发"})
+
+
         #### 0.已经持仓的股票是否要卖出
         for code in has_stock_list:
             stock = code
