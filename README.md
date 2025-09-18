@@ -59,7 +59,7 @@ To install Hermes, follow these steps:
   Hermes is released under the MIT License. See LICENSE for more details.
 
 ##Contact
-  For questions, suggestions, or support, please reach out to our team at support@hermes.com.
+  For questions, suggestions, or support, please reach out to our team at michaux18@163.com.
 
 ##Acknowledgments
   Special thanks to the open-source community for their valuable contributions and support in building Hermes.
