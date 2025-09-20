@@ -159,6 +159,7 @@ class MlpInferV2(BaseStrategy):
         self.sorted_gpzt_pools = list()
 
         # 添加总仓位利润监控相关属性
+        self.initial_portfolio_value = 0.0  # 初始化初始资产值
         self.portfolio_peak_profit = 0.0  # 记录当天最高利润率
         self.portfolio_peak_reached = False  # 是否已经达到过5%的峰值
         self.portfolio_cleared_today = False  # 今天是否已经清仓
