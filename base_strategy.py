@@ -107,6 +107,7 @@ class BaseStrategy:
         else:
             print(f"Holdings file not found: {self.holding_file}")
             self.holdings = {}
+        print(f"LOAD holding file finish! holding={self.holdings}")
         return self.holdings
 
     def save_holdings(self):
@@ -126,20 +127,23 @@ class BaseStrategy:
                 df = pd.read_excel(self.trade_record_file)
                 # 将DataFrame转换为交易记录列表
                 self.trade_records = df.to_dict('records')
-
+                standardized_records = []
                 # 将列名从中文映射回英文字段名
                 for record in self.trade_records:
-                    record['timestamp'] = record.pop('时间', '')
-                    record['action'] = record.pop('操作', '')
-                    record['stock_code'] = record.pop('股票代码', '')
-                    record['stock_name'] = record.pop('股票名称', '')
-                    record['price'] = record.pop('价格', 0)
-                    record['volume'] = record.pop('数量', 0)
-                    record['order_id'] = record.pop('订单ID', '')
-                    record['reason'] = record.pop('原因ID', '')
-                    record['account'] = record.pop('账户', '')
-                    record['strategy'] = record.pop('策略', '')
-
+                    standardized_record = {
+                        'timestamp': record.get('时间', record.get('timestamp', '')),
+                        'action': record.get('操作', record.get('action', '')),
+                        'stock_code': record.get('股票代码', record.get('stock_code', '')),
+                        'stock_name': record.get('股票名称', record.get('stock_name', '')),
+                        'price': record.get('价格', record.get('price', 0)),
+                        'volume': record.get('数量', record.get('volume', 0)),
+                        'order_id': record.get('订单ID', record.get('order_id', '')),
+                        'reason': record.get('原因ID', record.get('reason', '')),
+                        'account': record.get('账户', record.get('account', '')),
+                        'strategy': record.get('策略', record.get('strategy', ''))
+                    }
+                    standardized_records.append(standardized_record)
+                self.trade_records = standardized_records
                 print(f"Loaded {len(self.trade_records)} trade records from {self.trade_record_file}")
             except Exception as e:
                 print(f"Error loading trade records from Excel: {e}")
@@ -219,10 +223,92 @@ class BaseStrategy:
 
     def get_holding_volume(self, stock_code):
         """获取指定股票的持仓量"""
+        print(self.holdings)
         return self.holdings.get(stock_code, 0)
 
     def get_holding_days(self, stock_code):
         """计算持仓天数"""
+        if stock_code not in self.holdings or self.holdings[stock_code] <= 0:
+            return 0
+
+        # 查找该股票的最后一次买入记录
+        buy_records = []
+        for r in self.trade_records:
+            record_stock_code = self.get_record_field(r, 'stock_code')
+            record_action = self.get_record_field(r, 'action')
+
+            if record_stock_code == stock_code and record_action == 'buy':
+                buy_records.append(r)
+
+        if not buy_records:
+            return 0
+
+        # 获取最后一次买入时间
+        last_buy = max(buy_records, key=lambda x: self.get_record_field(x, 'timestamp', ''))
+
+        timestamp_str = self.get_record_field(last_buy, 'timestamp')
+        if not timestamp_str:
+            return 0
+
+        try:
+            buy_date = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S').date()
+            current_date = datetime.now().date()
+            holding_days = (current_date - buy_date).days
+            return holding_days
+        except Exception as e:
+            print(f"Error parsing timestamp {timestamp_str}: {e}")
+            return 0
+
+    def get_all_holdings(self):
+        """获取所有持仓"""
+        return self.holdings.copy()
+
+    def get_record_field(self, record, field_name, default_value=None):
+        """
+        安全获取记录字段，兼容中英文字段名
+        """
+        # 英文字段名优先
+        if field_name in record:
+            return record[field_name]
+
+        # 中文字段名映射
+        chinese_field_map = {
+            'timestamp': '时间',
+            'action': '操作',
+            'stock_code': '股票代码',
+            'stock_name': '股票名称',
+            'price': '价格',
+            'volume': '数量',
+            'order_id': '订单ID',
+            'reason': '原因ID',
+            'account': '账户',
+            'strategy': '策略'
+        }
+
+        chinese_field = chinese_field_map.get(field_name)
+        if chinese_field and chinese_field in record:
+            return record[chinese_field]
+
+        return default_value
+
+    def is_today_bought(self, stock_code):
+        """检查是否为当天买入的股票"""
+        if stock_code not in self.holdings or self.holdings[stock_code] <= 0:
+            return False
+
+        # 查找该股票当天的买入记录
+        current_date = datetime.now().date()
+        today_buy_records = [
+            r for r in self.trade_records
+            if (r['stock_code'] == stock_code and
+                r['action'] == 'buy' and
+                datetime.strptime(r['timestamp'], '%Y-%m-%d %H:%M:%S').date() == current_date)
+        ]
+
+        return len(today_buy_records) > 0
+
+    def get_trade_calendar_holding_days(self, stock_code):
+        """使用交易日历计算持仓天数（考虑T+1）"""
         if stock_code not in self.holdings or self.holdings[stock_code] <= 0:
             return 0
 
@@ -235,14 +321,19 @@ class BaseStrategy:
 
         # 获取最后一次买入时间
         last_buy = max(buy_records, key=lambda x: x['timestamp'])
-        buy_date = datetime.strptime(last_buy['timestamp'], '%Y-%m-%d %H:%M:%S').date()
+        buy_date_str = last_buy['timestamp'].split(' ')[0]  # 只取日期部分
 
-        # 计算持仓天数
-        current_date = datetime.now().date()
-        holding_days = (current_date - buy_date).days
-
-        return holding_days
-
-    def get_all_holdings(self):
-        """获取所有持仓"""
-        return self.holdings.copy()
+        # 使用交易日历计算（这里需要接入实际的交易日历）
+        try:
+            # 假设有一个交易日历模块
+            import a_trade_calendar
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            trade_days = a_trade_calendar.get_trade_days(buy_date_str, current_date)
+            holding_days = len(trade_days) - 1  # 减去买入当天
+            return max(0, holding_days)
+        except:
+            # 如果交易日历不可用，回退到自然日计算
+            buy_date = datetime.strptime(buy_date_str, '%Y-%m-%d').date()
+            current_date = datetime.now().date()
+            holding_days = (current_date - buy_date).days
+            return holding_days
