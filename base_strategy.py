@@ -328,8 +328,8 @@ class BaseStrategy:
             # 假设有一个交易日历模块
             import a_trade_calendar
             current_date = datetime.now().strftime("%Y-%m-%d")
-            trade_days = a_trade_calendar.get_trade_days(buy_date_str, current_date)
-            holding_days = len(trade_days) - 1  # 减去买入当天
+            trade_days = a_trade_calendar.get_trade_days_interval(buy_date_str, current_date)
+            holding_days = trade_days - 1  # 减去买入当天
             return max(0, holding_days)
         except:
             # 如果交易日历不可用，回退到自然日计算
