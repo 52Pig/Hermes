@@ -42,8 +42,10 @@ dataset/*.csv
 dataset/*.json
 dataset/*.meta
 dataset/reverse_data/
+dataset/*.SZ
 backtesting/*.csv
 backtesting/*.xlsx
+backtesting/xgtrader_backtrader/
 test/data/
 
 # Model and serialized binary artifacts
