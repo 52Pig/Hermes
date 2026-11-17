@@ -1721,23 +1721,35 @@ if __name__ == "__main__":
     # print(get_stock_now_data())
 
 
-    stfile = 'D:/tool/dataset/stock_pools.json'
-    sc_dict = json.load(open(stfile))
-    # subscribe_whole_list = list(set([info_dict.get("code") for code, info_dict in sc_dict.items()]))
-    subscribe_whole_list = list(set([code for code, info_dict in sc_dict.items()]))
-    start = time.time()
-    df = get_batch_stock_data_em_from_qmt(stock_list=subscribe_whole_list, start_date='20210101', end_date='20500101',
-                                         data_type='1',
-                                         count=8000)
-    end = time.time()
-    print(f"get_batch_stock_data spend:{(end-start)/1000}")
-    # print(df)
-    all_num = 0
-    for i, code in enumerate(subscribe_whole_list):
-        info = df[code]
+    # stfile = 'D:/tool/dataset/stock_pools.json'
+    # sc_dict = json.load(open(stfile))
+    # # subscribe_whole_list = list(set([info_dict.get("code") for code, info_dict in sc_dict.items()]))
+    # subscribe_whole_list = list(set([code for code, info_dict in sc_dict.items()]))
+    # start = time.time()
+    # df = get_batch_stock_data_em_from_qmt(stock_list=subscribe_whole_list, start_date='20210101', end_date='20500101',
+    #                                      data_type='1',
+    #                                      count=8000)
+    # end = time.time()
+    # print(f"get_batch_stock_data spend:{(end-start)/1000}")
+    # # print(df)
+    # all_num = 0
+    # for i, code in enumerate(subscribe_whole_list):
+    #     info = df[code]
+    #
+    #     print(f"ind={i}, code={code}, info={info}")
+    #     if i > 60:
+    #         break
 
-        print(f"ind={i}, code={code}, info={info}")
-        if i > 60:
-            break
+    df = get_stock_today_data_em_from_qmt(
+        stock="003010",
+        start_date='20250912',
+        end_date='20250912',
+        data_type='1'
+    )
+    print(df["close"].iloc[-1])
 
+    from xtquant import xtdata
+    a = adjust_factors = xtdata.get_divid_factors("003010.SH", '20250911',
+        '20250920')
+    print(a)
 

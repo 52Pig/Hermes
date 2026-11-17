@@ -1,8 +1,28 @@
 # -*- coding: utf-8 -*-
+#encoding=utf8
 import os, sys
 import json
 import numpy as np
 from xtquant import xtdata
+
+
+def build_stock_to_bk_mapping():
+    """构建股票到板块的映射"""
+    stock_to_bk = {}
+    sector_list = xtdata.get_sector_list()
+
+    for sector_name in sector_list:
+        stock_list = xtdata.get_stock_list_in_sector(sector_name)
+        for stock_code in stock_list:
+            if stock_code not in stock_to_bk:
+                stock_to_bk[stock_code] = []
+            stock_to_bk[stock_code].append(sector_name)
+
+    return stock_to_bk
+
+
+# 在主程序开始前构建映射
+stock_to_bk_map = build_stock_to_bk_mapping()
 
 
 def gen_stock_pools():
@@ -45,17 +65,21 @@ def gen_stock_pools():
         ## 查询总量
         totalVol = instrument_detail.get("TotalVolume", 0)
         code = stock_code.split('.')[0].strip()
-        stc_dict[code] = {"code": stock_code, "name": stock_name, "FloatVolume": floatVol, "TotalVolume": totalVol}
+        bk_list = stock_to_bk_map[stock_code]
+        stc_dict[code] = {"code": stock_code, "name": stock_name, "FloatVolume": floatVol, "TotalVolume": totalVol, 'xt_bk': bk_list}
 
     print('pools_size:', len(stc_dict))
 
     if len(stc_dict) > 10:
         data_path = "D:/tool/dataset"
-        stc_json = open(os.path.join(data_path, 'stock_pools.json'), 'w')
+        # stc_json = open(os.path.join(data_path, 'stock_pools.json'), 'w')
+        stc_json = open(os.path.join(data_path, 'stock_pools.json'), 'w', encoding='utf-8')
+
         stc_str = json.dumps(stc_dict, ensure_ascii=False, indent=4)
         stc_json.write(stc_str+'\n')
 
-        meta = open(os.path.join(data_path, 'stock_pools.meta'), 'w')
+        # meta = open(os.path.join(data_path, 'stock_pools.meta'), 'w')
+        meta = open(os.path.join(data_path, 'stock_pools.meta'), 'w', encoding='utf-8')
         row_lines = '\t'.join(('pools_size', str(len(stc_dict))))
         meta.write(row_lines + '\n')
 

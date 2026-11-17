@@ -150,7 +150,7 @@ if __name__ == '__main__':
     # 读取stock_code
     # stfile = '../dataset/stock_pools.json'
     stfile = config['stock_pool_file']
-    sc_dict = json.load(open(stfile))
+    sc_dict = json.load(open(stfile, encoding="utf8"))
     # print(sc_json.get("600259.SH"))
     # st_list = [(ele.split('.')[0], 2) for ele in sc_dict.keys()]
     # quit()

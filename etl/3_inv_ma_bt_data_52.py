@@ -50,7 +50,7 @@ os.makedirs(config['output_dir'], exist_ok=True)
 
 def load_stock_pool(file_path):
     """加载股票池数据"""
-    return json.load(open(file_path))
+    return json.load(open(file_path, encoding='utf-8'))
 
 
 def get_trading_dates(data_dir):
