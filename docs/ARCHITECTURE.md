@@ -126,9 +126,9 @@ stateDiagram-v2
 
 ## 5. 网关、风险和恢复
 
-当前默认网关是 `mini_qmt`，实现位于 `execution/xtquant_gateway.py`，路由位于 `execution/multi_gateway.py`。代码保留 Paper、Manual、PTrade、FIX、Broker API、Algo 和 CTP 的扩展接口，是否可用取决于客户端和账户权限。
+当前默认网关是 `mini_qmt`，实现位于 `execution/xtquant_gateway.py`，路由位于 `execution/multi_gateway.py`。代码保留 Paper、Manual、PTrade、FIX、Broker API、Algo 和 CTP 的扩展接口，是否可用取决于客户端和账户权限。订单账本目录必须由 `conf/config.ini` 的 `[execution] order_store_dir` 显式提供。
 
-`execution/risk.py` 的默认限制在没有显式 `[execution]` 配置时生效：
+`execution/risk.py` 的风险限制在没有对应 `[execution]` 配置时使用代码默认值；订单账本目录不适用默认值，必须显式配置：
 
 - 单笔订单权益比例：25%。
 - 总持仓权益比例：100%。

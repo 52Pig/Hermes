@@ -77,9 +77,20 @@ interval = 60
 
 文件中还配置 Python 解释器、Hephaestus-Forge 根目录、Top-K、持有天数、现金缓冲、再平衡时间和管线超时。变更这些项时要同时检查 `strategy/top10_v8_v1.py`。
 
-## 4. 执行配置的代码默认值
+## 4. 执行配置
 
-当前 `config.ini` 没有显式 `[execution]` 段。`run.py` 因此使用代码默认值，例如：
+`conf/config.ini` 必须显式提供 `[execution]` 段。订单账本目录由 `order_store_dir` 控制，代码不会回退到内置路径：
+
+新环境可从脱敏模板 [`conf/config.example.ini`](../conf/config.example.ini) 复制配置，再补齐本机账户和客户端路径。
+
+```ini
+[execution]
+order_store_dir = D:/tool/dataset/strategy_positions
+```
+
+Hermes 会在该目录下按账户键创建 `orders_<account_key>.sqlite3`。缺少该配置时，账户初始化直接失败并保持订单闸门关闭，避免把账本写入未知位置。
+
+以下执行参数仍可使用代码默认值；如果需要成为部署契约，应补充到 `[execution]` 并同步更新测试和运维记录：
 
 - `enabled=True`
 - `default_channel=mini_qmt`
@@ -89,9 +100,6 @@ interval = 60
 - `max_gross_equity_fraction=1.0`
 - `max_margin_equity_fraction=0.40`
 - `max_order_quantity=1000000`
-
-如果这些值需要成为可审计的部署契约，应补充显式配置段并同时更新测试、运维文档和变更记录；不要只在文档中宣称配置已存在。
-
 ## 5. 路径和产物
 
 常见路径如下：
