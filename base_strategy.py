@@ -156,6 +156,7 @@ class BaseStrategy:
     def save_trade_records(self):
         """将内存中的交易记录保存到Excel文件"""
         if not self.trade_record_file:
+            print("DEBUG trade records file is None")
             return
 
         try:
@@ -181,11 +182,25 @@ class BaseStrategy:
             df.to_excel(self.trade_record_file, index=False)
             print(f"Saved {len(self.trade_records)} trade records to {self.trade_record_file}")
 
+            # 验证文件是否真的保存了
+            if os.path.exists(self.trade_record_file):
+                file_size = os.path.getsize(self.trade_record_file)
+                print(f"[DEBUG] trade record file size: {file_size} 字节")
+                # 读取验证
+                try:
+                    verify_df = pd.read_excel(self.trade_record_file)
+                    print(f"[DEBUG] trade record number: {len(verify_df)}")
+                except Exception as e:
+                    print(f"[DEBUG] trade record check read fail: {e}")
+            else:
+                print("[DEBUG] ERROR: trade record file is not exists after file saved!")
+
         except Exception as e:
             print(f"Error saving trade records to Excel: {e}")
 
     def record_trade(self, action, stock_code, stock_name, price, volume, order_id, reason, account):
         """记录交易并更新持仓，保存到Excel"""
+        # print("-----------------------------#1")
         # 创建交易记录
         trade_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         trade_record = {
@@ -203,7 +218,7 @@ class BaseStrategy:
 
         # 添加到交易记录
         self.trade_records.append(trade_record)
-
+        # print("-----------------------------#2")
         # 更新持仓记录
         if action == 'buy':
             if stock_code not in self.holdings:
@@ -217,13 +232,14 @@ class BaseStrategy:
 
         # 保存持仓和交易记录
         self.save_holdings()
+        # print("-----------------------------#3")
         self.save_trade_records()
 
         return trade_record
 
     def get_holding_volume(self, stock_code):
         """获取指定股票的持仓量"""
-        print(self.holdings)
+        print("holdings=", self.holdings)
         return self.holdings.get(stock_code, 0)
 
     def get_holding_days(self, stock_code):

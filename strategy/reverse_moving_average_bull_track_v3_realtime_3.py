@@ -270,8 +270,8 @@ class RTRMAV3(BaseStrategy):
 
 
         ## 当天涨幅>x%不再追高，即使买入溢价不高，反而可能诱多跌幅较大
-        # if (current_price - last_1d_close_price ) / last_1d_close_price > 0.067:
-        #     return False, 199
+        if (current_price - last_1d_close_price ) / last_1d_close_price > 0.067:
+            return False, 199
 
         ## 记录了最近5次的历史价格数据
         his_price_list = self.buy_price_history[stock_code]

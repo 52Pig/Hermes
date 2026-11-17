@@ -9,9 +9,36 @@ import json
 import time
 from utils import utils
 from collections import OrderedDict
+from datetime import datetime, timedelta
 ##schema:名称,最新价,涨跌幅,涨跌额,成交量,成交额,振幅,最高,最低,今开,昨收,量比,换手率,市盈率-动态,市净率,总市值,流通市值,涨速,5分钟涨跌,60日涨跌幅,年初至今涨跌幅
 ##schema：['date', 'open', 'close', 'high', 'low', 'volume', '成交额', '振幅', '涨跌幅', '涨跌额', '换手率']
 
+def get_previous_trading_days(start_date, days=5):
+    """
+    获取指定日期前N个交易日的日期
+
+    参数:
+    start_date: 字符串，格式为'%Y%m%d'，例如'20250606'
+    days: 需要回溯的交易天数，默认为5
+
+    返回:
+    前N个交易日的日期，格式与输入相同
+    """
+    # 将字符串日期转换为datetime对象
+    current_date = datetime.strptime(str(start_date), '%Y%m%d')
+
+    # 创建一个包含交易日的日历（这里简化处理，实际应用中应该使用真实的交易日历）
+    # 这里假设所有工作日都是交易日，忽略节假日
+    trading_days = []
+    date_iter = current_date - timedelta(days=1)
+
+    while len(trading_days) < days:
+        # 检查是否为工作日（周一至周五）
+        if date_iter.weekday() < 5:
+            trading_days.append(date_iter.strftime('%Y%m%d'))
+        date_iter -= timedelta(days=1)
+
+    return trading_days
 
 class MA_Cross_Checker():
     def __init__(self, start_date, end_date):
@@ -38,6 +65,9 @@ class MA_Cross_Checker():
         # pe_ttm = market_dict.get("pe_ttm", -1)
         # pb = market_dict.get("pb", -1)
         # print(stock_code, total_mv, industry, industry, pe_ttm, pb)
+        # 获取前5个交易日
+        # previous_trading_days = get_previous_trading_days(self.start_date, 5)
+        # start_date_5_days_ago = previous_trading_days[-1]  # 最远的那个交易日
 
         # 获取历史数据
         ##schema：['date', 'open', 'close', 'high', 'low', 'volume', '成交额', '振幅', '涨跌幅', '涨跌额', '换手率']
@@ -103,9 +133,9 @@ if __name__ == '__main__':
     }
     os.makedirs(config['output_dir'], exist_ok=True)
 
-    formatted_datetime = datetime.datetime.now().strftime("%Y%m%d")
+    formatted_datetime = datetime.now().strftime("%Y%m%d")
     # 起始日期
-    trade_days = utils.get_a_share_trade_days_from_ak(start_date='20250906')
+    trade_days = utils.get_a_share_trade_days_from_ak(start_date='20260824')
     # trade_days = utils.get_a_share_trade_days_from_ak(start_date='20250714')
 
     # trade_days = utils.get_a_share_trade_days(start_date='20250717')
@@ -115,7 +145,7 @@ if __name__ == '__main__':
     # 读取stock_code
     # stfile = '../dataset/stock_pools.json'
     stfile = config['stock_pool_file']
-    sc_dict = json.load(open(stfile))
+    sc_dict = json.load(open(stfile, encoding="utf8"))
     # print(sc_json.get("600259.SH"))
     # st_list = [(ele.split('.')[0], 2) for ele in sc_dict.keys()]
     # quit()

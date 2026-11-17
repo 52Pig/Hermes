@@ -55,11 +55,11 @@ def gen_stock_pools():
 
     if len(stc_dict) > 10:
         data_path = "D:/tool/dataset"
-        stc_json = open(os.path.join(data_path, 'index_pools.json'), 'w')
+        stc_json = open(os.path.join(data_path, 'index_pools.json'), 'w', encoding='utf-8')
         stc_str = json.dumps(stc_dict, ensure_ascii=False, indent=4)
         stc_json.write(stc_str+'\n')
 
-        meta = open(os.path.join(data_path, 'index_pools.meta'), 'w')
+        meta = open(os.path.join(data_path, 'index_pools.meta'), 'w', encoding='utf-8')
         row_lines = '\t'.join(('pools_size', str(len(stc_dict))))
         meta.write(row_lines + '\n')
 

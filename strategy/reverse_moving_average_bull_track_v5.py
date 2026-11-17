@@ -72,6 +72,8 @@ class ReverseMABULLV5(BaseStrategy):
             # print(kk)
             idict = self.stock_dict.get(kk, {})
             cc = idict.get("code", "")
+            if cc.startswith("688"):
+                continue
             is_target = idict.get("is_target", "")
             if "1" == is_target:
                 self.pools_list.append(cc)
@@ -238,11 +240,15 @@ class ReverseMABULLV5(BaseStrategy):
             #     return True, 7
 
             ## 卖出情况1: 止损位，一天内亏损6.2%
-            if cur_time > datetime.time(9, 41) and (last_price - last_1d_close_price) / last_1d_close_price < 0.02:
-                return True, 1
-            if ma5 < prev_ma5 and cur_time <= datetime.time(9, 41) and (
+            if cur_time <= datetime.time(9, 54) and (
                     last_price - last_1d_close_price) / last_1d_close_price < -0.01:
                 return True, 11
+            if cur_time > datetime.time(9, 54) and (last_price - last_1d_close_price) / last_1d_close_price < 0.02:
+                return True, 1
+            # 日内冲高回落
+            if cur_time > datetime.time(9, 54) and (last_price - last_1d_close_price) / last_1d_close_price > 0.04 and last_price < max_price * (1 - 0.015):
+                return True, 12
+
             # if cur_time > datetime.time(9, 41) and (last_price - last_1d_close_price) / last_1d_close_price > 0.02:
 
 
