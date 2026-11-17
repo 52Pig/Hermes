@@ -501,13 +501,18 @@ async def check_and_update_data():
 
 async def main():
     await check_and_update_data()
-    manager = MicroserviceManager('conf/config.ini')
+    config_path = os.environ.get("HERMES_CONFIG_FILE", "conf/config.ini")
+    manager = MicroserviceManager(config_path)
     await manager.start_services()
 
     # 启动文件监视
     event_handler = ConfigReloadHandler(manager)
     observer = Observer()
-    observer.schedule(event_handler, path='conf/', recursive=False)
+    observer.schedule(
+        event_handler,
+        path=os.path.dirname(os.path.abspath(config_path)),
+        recursive=False,
+    )
     observer.start()
 
     # 使用 asyncio.create_task 启动监控协程

@@ -81,7 +81,7 @@ interval = 60
 
 `conf/config.ini` 必须显式提供 `[execution]` 段。订单账本目录由 `order_store_dir` 控制，代码不会回退到内置路径：
 
-新环境可从脱敏模板 [`conf/config.example.ini`](../conf/config.example.ini) 复制配置，再补齐本机账户和客户端路径。
+新环境可从脱敏模板 [`conf/config.example.ini`](../conf/config.example.ini) 复制配置，再补齐本机账户和客户端路径。线上账户配置建议保存为被忽略的 `conf/config.local.ini`，并通过 `HERMES_CONFIG_FILE=conf/config.local.ini` 启动；未设置时使用仓库内的安全模板。
 
 ```ini
 [execution]
