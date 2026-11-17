@@ -1,0 +1,63 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local IDE and editor metadata
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local environments and secrets
+.env
+.env.*
+.venv/
+venv/
+env/
+conf/*.local.ini
+conf/*.private.ini
+conf/*.secret.ini
+
+# Runtime logs, results, state, databases, and caches
+logs/
+results/
+norm_cache/
+data/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+strategy/*_state.json
+examples/ppo/log/
+
+# Generated market-data and backtest artifacts
+dataset/*.csv
+dataset/*.json
+dataset/*.meta
+dataset/reverse_data/
+backtesting/*.csv
+backtesting/*.xlsx
+test/data/
+
+# Model and serialized binary artifacts
+model_dir/
+strategy/model_dir/
+strategy/model_mlp_infer_v2/
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.pkl
+
+# Temporary and OS files
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
